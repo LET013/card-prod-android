@@ -75,6 +75,15 @@ jobs:
           tail -n 180 /tmp/gradle-test.log
           exit $status
 
+      - name: Upload Android test failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-test-failure-${{ github.run_id }}
+          path: /tmp/gradle-test.log
+          if-no-files-found: error
+          retention-days: 3
+
       - name: Replace one-time workflow with permanent CI
         shell: bash
         run: |
