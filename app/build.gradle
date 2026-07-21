@@ -1,0 +1,85 @@
+plugins {
+    id 'com.android.application'
+//    id 'kotlin-android'
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def arcsoftAppId = localProperties.getProperty('arcsoft.appId', System.getenv('ARCSOFT_APP_ID') ?: '')
+def arcsoftSdkKey = localProperties.getProperty('arcsoft.sdkKey', System.getenv('ARCSOFT_SDK_KEY') ?: '')
+def arcsoftActiveKey = localProperties.getProperty('arcsoft.activeKey', System.getenv('ARCSOFT_ACTIVE_KEY') ?: '')
+
+android {
+    namespace 'com.xingyao.card'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.xingyao.card"
+        minSdk 21
+        targetSdk 33
+        versionCode 1
+        versionName "1.0"
+
+        buildConfigField 'String', 'ARCSOFT_APP_ID', "\"${arcsoftAppId}\""
+        buildConfigField 'String', 'ARCSOFT_SDK_KEY', "\"${arcsoftSdkKey}\""
+        buildConfigField 'String', 'ARCSOFT_ACTIVE_KEY', "\"${arcsoftActiveKey}\""
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    dataBinding{
+        enabled = true
+    }
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
+//    kotlinOptions {
+//        jvmTarget = '1.8'
+//    }
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets', '../../uniapp/dist/build/h5']
+        }
+    }
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.10'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.10'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.10'
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.webkit:webkit:1.6.0'
+    implementation 'androidx.biometric:biometric:1.1.0'
+    
+    implementation 'io.github.xmaihh:serialport:2.1.1'
+    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    implementation files('libs/arcsoft_face.jar')
+    
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
