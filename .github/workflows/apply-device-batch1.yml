@@ -68,9 +68,12 @@ jobs:
       - name: Run Android unit tests
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/gradle-test.log 2>&1
+          status=$?
+          tail -n 180 /tmp/gradle-test.log
+          exit $status
 
       - name: Replace one-time workflow with permanent CI
         shell: bash
@@ -125,9 +128,12 @@ jobs:
                 - name: Run Android unit tests
                   shell: bash
                   run: |
-                    set -euo pipefail
+                    set +e
                     chmod +x gradlew
-                    ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+                    ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/gradle-test.log 2>&1
+                    status=$?
+                    tail -n 180 /tmp/gradle-test.log
+                    exit $status
           YAML
 
       - name: Commit audited batch
