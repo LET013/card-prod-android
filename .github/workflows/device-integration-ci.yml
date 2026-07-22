@@ -22,7 +22,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Check out source
@@ -33,6 +33,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Validate Codex guidance and skills
         shell: bash
@@ -150,6 +155,15 @@ jobs:
               assert value.count('<style') == value.count('</style>'), name
           PY
 
+      - name: Build uni-app H5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uniapp
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build:h5
+          test -s dist/build/h5/index.html
+
       - name: Run Android unit tests
         shell: bash
         run: |
@@ -157,7 +171,7 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 
-      - name: Build debug APK
+      - name: Build debug APK with H5 assets
         shell: bash
         run: |
           set -euo pipefail
