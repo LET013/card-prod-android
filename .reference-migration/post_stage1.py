@@ -42,8 +42,11 @@ write(path, value)
 path = 'app/src/main/java/com/xingyao/card/FaceEnrollmentController.java'
 value = read(path)
 if 'import com.xingyao.card.core.DeviceRuntimeRegistry;' not in value:
-    value = value.replace('import com.xingyao.card.core.',
-                          'import com.xingyao.card.core.DeviceRuntimeRegistry;\n\nimport com.xingyao.card.core.', 1)
+    marker = 'import com.ai.face.base.addFace.AddFaceCallBack;'
+    if marker not in value:
+        raise RuntimeError('FaceEnrollmentController import marker not found')
+    value = value.replace(marker,
+                          'import com.xingyao.card.core.DeviceRuntimeRegistry;\n\n' + marker, 1)
 write(path, value)
 
 # The stage script deliberately performs broad type replacement. Normalize the sync constructor to
