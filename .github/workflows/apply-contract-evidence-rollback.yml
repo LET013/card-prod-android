@@ -72,8 +72,8 @@ jobs:
               "replace_once(path, '    private static final long CREDENTIAL_REFRESH_SKEW_MS = 5L * 60L * 1000L;\\n', '')\n", 1)
 
           s = s.replace(
-              "assert 'runtimeToken\\\", \\\"\\\"' not in gateway, 'runtimeToken used as HTTP Bearer'",
-              "assert 'String token = settings.optString(\\\"runtimeToken\\\"' not in gateway, 'runtimeToken used as HTTP Bearer'",
+              "assert 'runtimeToken\", \"\"' not in gateway, 'runtimeToken used as HTTP Bearer'",
+              "assert 'String token = settings.optString(\"runtimeToken\"' not in gateway, 'runtimeToken used as HTTP Bearer'",
               1)
           p.write_text(s, encoding='utf-8')
           PY
@@ -121,13 +121,29 @@ jobs:
       - name: Run Android tests
         shell: bash
         run: |
+          set +e
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/android-tests.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo '===== Android test failure tail ====='
+            tail -n 220 /tmp/android-tests.log
+            exit "$status"
+          fi
+          tail -n 40 /tmp/android-tests.log
 
       - name: Build debug APK
         shell: bash
         run: |
-          ./gradlew :app:assembleDebug --no-daemon --console=plain
+          set +e
+          ./gradlew :app:assembleDebug --no-daemon --console=plain > /tmp/android-build.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo '===== Android build failure tail ====='
+            tail -n 220 /tmp/android-build.log
+            exit "$status"
+          fi
+          tail -n 40 /tmp/android-build.log
           test -s app/build/outputs/apk/debug/app-debug.apk
 
       - name: Commit verified source rollback
