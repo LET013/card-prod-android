@@ -156,3 +156,9 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --console=plain
