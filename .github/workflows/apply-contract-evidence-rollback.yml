@@ -168,7 +168,6 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add AGENTS.md .agents/skills/card-cabinet-architecture-guardian/SKILL.md \
-            .github/workflows/device-integration-ci.yml \
             app/src/main/java/com/xingyao/card/core \
             app/src/test/java/com/xingyao/card/core \
             uniapp/src/mock/data.js uniapp/src/pages/config/config.vue \
