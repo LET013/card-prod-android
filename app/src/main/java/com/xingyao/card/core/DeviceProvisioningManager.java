@@ -9,14 +9,14 @@ import com.xingyao.card.BuildConfig;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Runs the backend V4.1 startup flow before MQTT/HTTP runtime communication. */
+/** Runs the V4.1 registration, activation, verification and remote-config flow. */
 public final class DeviceProvisioningManager {
     private static final String API_REGISTER = "/api/v1/device/register";
     private static final String API_APP_VERSION_CHECK = "/api/v1/app-version/check";
     private static final String API_ACTIVATE = "/api/v1/device/activate";
     private static final String API_VERIFY = "/api/v1/device/verify";
     private static final String API_CONFIG = "/api/v1/device/config";
-    private static final long CREDENTIAL_REFRESH_SKEW_MS = 5 * 60 * 1000L;
+    private static final long CREDENTIAL_REFRESH_SKEW_MS = 5L * 60L * 1000L;
 
     private final Context context;
     private final NativeSettingsRepository settingsRepository;
@@ -34,10 +34,19 @@ public final class DeviceProvisioningManager {
         return ensureProvisioned(true);
     }
 
+    public synchronized JSONObject refreshRemoteConfig() throws Exception {
+        JSONObject settings = settingsRepository.load();
+        String apiBaseUrl = requireHttpBaseUrl(settings);
+        JSONObject remote = config(apiBaseUrl, settings);
+        JSONObject mapped = DeviceConfigMapper.apply(settings, remote);
+        mapped.put("provisionedAt", System.currentTimeMillis());
+        return settingsRepository.save(mapped);
+    }
+
     private JSONObject ensureProvisioned(boolean forceCredentialRefresh) throws Exception {
         JSONObject settings = settingsRepository.load();
         settings.put("machineId", machineId(settings));
-        String apiBaseUrl = settings.optString("apiBaseUrl", settings.optString("serverAddress", ""));
+        String apiBaseUrl = requireHttpBaseUrl(settings);
         checkAppVersion(apiBaseUrl, settings);
 
         if (settings.optString("deviceToken", "").trim().isEmpty()
@@ -50,39 +59,70 @@ public final class DeviceProvisioningManager {
             settingsRepository.save(settings);
         }
 
-        if (forceCredentialRefresh || !hasMqttCredentials(settings) || credentialsExpired(settings)) {
-            JSONObject activated = activate(apiBaseUrl, settings);
-            if (hasMqttCredentials(activated)) {
-                mergeCredentials(settings, activated);
-            } else if (activated.has("registerCode")) {
-                settings.put("registerCode", activated.optString("registerCode", ""));
-                settings.put("activationStatus", activated.optString("status", ""));
-                settings.put("registerCodeExpireTime", activated.optLong("expireTime", 0L));
-                String activeKey = settings.optString("activationCode", "").trim();
-                if (activeKey.isEmpty()) {
-                    settingsRepository.save(settings);
-                    throw new IllegalStateException("设备待激活，请在配置中填写激活码；registerCode=" + settings.optString("registerCode"));
-                }
-                JSONObject verified = verify(apiBaseUrl, settings, activeKey);
-                if (!verified.optBoolean("valid", true)) {
-                    settingsRepository.save(settings);
-                    throw new IllegalStateException(verified.optString("msg", "设备激活码验证失败"));
-                }
-                mergeCredentials(settings, verified);
-            }
+        boolean mqttRequested = BackendEndpointSettings.MODE_MQTT.equalsIgnoreCase(
+                settings.optString("backendTransport", BackendEndpointSettings.MODE_MQTT));
+        boolean activationRequired = forceCredentialRefresh
+                || !"ACTIVATED".equalsIgnoreCase(settings.optString("activationStatus", ""))
+                || credentialsExpired(settings)
+                || (mqttRequested && !hasMqttCredentials(settings));
+        if (activationRequired) settings = performActivation(apiBaseUrl, settings);
+
+        JSONObject remoteConfig = config(apiBaseUrl, settings);
+        settings = DeviceConfigMapper.apply(settings, remoteConfig);
+
+        // A server-side switch to MQTT requires MQTT credentials even if the local pre-registration
+        // form previously selected HTTP.
+        if (BackendEndpointSettings.MODE_MQTT.equalsIgnoreCase(settings.optString("backendTransport"))
+                && !hasMqttCredentials(settings)) {
+            settings = performActivation(apiBaseUrl, settings);
         }
 
-        JSONObject config = config(apiBaseUrl, settings);
-        applyConfig(settings, config);
         settings.put("provisionedAt", System.currentTimeMillis());
         return settingsRepository.save(settings);
+    }
+
+    private JSONObject performActivation(String apiBaseUrl, JSONObject settings) throws Exception {
+        JSONObject activated = activate(apiBaseUrl, settings);
+        if (hasMqttCredentials(activated)) {
+            mergeCredentials(settings, activated);
+            return settingsRepository.save(settings);
+        }
+
+        String status = activated.optString("status", "");
+        if ("ACTIVATED".equalsIgnoreCase(status)) {
+            settings.put("activationStatus", "ACTIVATED");
+            merge(settings, activated, "expireTime", "deviceName", "deviceCode", "clientId");
+            return settingsRepository.save(settings);
+        }
+
+        if (activated.has("registerCode")) {
+            settings.put("registerCode", activated.optString("registerCode", ""))
+                    .put("activationStatus", status)
+                    .put("registerCodeExpireTime", activated.optLong("expireTime", 0L));
+            String activeKey = settings.optString("activationCode", "").trim();
+            if (activeKey.isEmpty()) {
+                settingsRepository.save(settings);
+                throw new IllegalStateException("设备待激活，请填写激活码；registerCode="
+                        + settings.optString("registerCode"));
+            }
+            JSONObject verified = verify(apiBaseUrl, settings, activeKey);
+            if (!verified.optBoolean("valid", false)) {
+                settingsRepository.save(settings);
+                throw new IllegalStateException(verified.optString("msg", "设备激活码验证失败"));
+            }
+            mergeCredentials(settings, verified);
+            return settingsRepository.save(settings);
+        }
+
+        throw new IllegalStateException(activated.optString("msg", "设备激活响应缺少有效状态或注册码"));
     }
 
     private JSONObject register(String apiBaseUrl, JSONObject settings) throws Exception {
         JSONObject body = deviceBody(settings)
                 .put("versionCode", BuildConfig.VERSION_CODE)
                 .put("channelId", settings.optString("channelId", "official"));
-        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl, "").post(API_REGISTER, body));
+        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl, "")
+                .post(API_REGISTER, body));
     }
 
     private void checkAppVersion(String apiBaseUrl, JSONObject settings) throws Exception {
@@ -92,37 +132,44 @@ public final class DeviceProvisioningManager {
                 .put("deviceCode", settings.optString("deviceCode", settings.optString("deviceId", "")));
         JSONObject response = new BackendHttpClient(apiBaseUrl, "").post(API_APP_VERSION_CHECK, body);
         Object data = response.opt("data");
-        if (!(data instanceof JSONObject)) return;
-        JSONObject versionInfo = (JSONObject) data;
-        if (versionInfo.optBoolean("forceUpdate", false)) {
-            settings.put("forceUpdate", true).put("versionInfo", versionInfo);
+        if (!(data instanceof JSONObject)) {
+            settings.put("forceUpdate", false).remove("versionInfo");
             settingsRepository.save(settings);
+            return;
+        }
+        JSONObject versionInfo = (JSONObject) data;
+        settings.put("forceUpdate", versionInfo.optBoolean("forceUpdate", false))
+                .put("versionInfo", versionInfo);
+        settingsRepository.save(settings);
+        if (versionInfo.optBoolean("forceUpdate", false)) {
             throw new IllegalStateException("当前APP版本存在强制更新，请先升级到 "
                     + versionInfo.optString("versionName", "最新") + " 版本后再启动");
         }
-        settings.put("forceUpdate", false).put("versionInfo", versionInfo);
-        settingsRepository.save(settings);
     }
 
     private JSONObject activate(String apiBaseUrl, JSONObject settings) throws Exception {
-        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl, settings.optString("deviceToken"))
-                .post(API_ACTIVATE, deviceBody(settings).put("deviceId", settings.optString("deviceCode", settings.optString("deviceId")))));
+        JSONObject body = deviceBody(settings)
+                .put("deviceId", settings.optString("deviceCode", settings.optString("deviceId")));
+        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl,
+                settings.optString("deviceToken")).post(API_ACTIVATE, body));
     }
 
     private JSONObject verify(String apiBaseUrl, JSONObject settings, String activeKey) throws Exception {
         JSONObject body = new JSONObject()
                 .put("registerCode", settings.optString("registerCode"))
                 .put("activeKey", activeKey);
-        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl, settings.optString("deviceToken")).post(API_VERIFY, body));
+        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl,
+                settings.optString("deviceToken")).post(API_VERIFY, body));
     }
 
     private JSONObject config(String apiBaseUrl, JSONObject settings) throws Exception {
-        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl, settings.optString("deviceToken")).get(API_CONFIG));
+        return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl,
+                settings.optString("deviceToken")).get(API_CONFIG));
     }
 
     private JSONObject deviceBody(JSONObject settings) throws JSONException {
         return new JSONObject()
-                .put("mac", settings.optString("mac", "AA:BB:CC:DD:EE:FF"))
+                .put("mac", settings.optString("mac", ""))
                 .put("machineId", settings.optString("machineId"))
                 .put("model", Build.MANUFACTURER + " " + Build.MODEL)
                 .put("osType", "ANDROID")
@@ -131,27 +178,15 @@ public final class DeviceProvisioningManager {
     }
 
     private void mergeCredentials(JSONObject settings, JSONObject data) throws JSONException {
-        merge(settings, data, "mqttPassword", "signingKey", "clientId", "expireTime", "deviceName", "deviceCode");
-        if (!settings.optString("deviceCode", "").trim().isEmpty()) settings.put("deviceId", settings.optString("deviceCode"));
-        if (!settings.optString("clientId", "").trim().isEmpty()) settings.put("mqttClientId", settings.optString("clientId"));
-        settings.put("activationStatus", "ACTIVATED");
-    }
-
-    private void applyConfig(JSONObject settings, JSONObject config) throws JSONException {
-        if (config == null) return;
-        if (config.has("baudRate")) settings.put("baudRate", String.valueOf(config.optInt("baudRate", 57600)));
-        if (config.has("groupSize")) settings.put("singleGroupCount", config.optInt("groupSize", settings.optInt("singleGroupCount", 10)));
-        if (config.has("totalSlots")) settings.put("totalCount", config.optInt("totalSlots", settings.optInt("totalCount", 100)));
-        if (config.has("tcpPort")) settings.put("tcpPort", config.optInt("tcpPort", settings.optInt("tcpPort", 9009)));
-        if (config.has("httpPort")) settings.put("httpPort", config.optInt("httpPort", settings.optInt("httpPort", 80)));
-        if (config.has("faceThreshold")) settings.put("faceRecognitionThreshold", config.optDouble("faceThreshold", settings.optDouble("faceRecognitionThreshold", 0.7)));
-        if (config.has("communicationMode")) settings.put("backendTransport", config.optString("communicationMode", "MQTT"));
-        if (config.has("serverIp")) settings.put("backendServerIp", config.optString("serverIp", ""));
-        if (config.has("pollingInterval")) {
-            int pollingInterval = config.optInt("pollingInterval", 5000);
-            settings.put("backendPollingIntervalMs", pollingInterval);
-            settings.put("serialPollingIntervalMs", pollingInterval);
+        merge(settings, data, "mqttPassword", "signingKey", "clientId", "expireTime",
+                "deviceName", "deviceCode", "mqttUsername");
+        if (!settings.optString("deviceCode", "").trim().isEmpty()) {
+            settings.put("deviceId", settings.optString("deviceCode"));
         }
+        if (!settings.optString("clientId", "").trim().isEmpty()) {
+            settings.put("mqttClientId", settings.optString("clientId"));
+        }
+        settings.put("activationStatus", "ACTIVATED");
     }
 
     private static boolean hasMqttCredentials(JSONObject data) {
@@ -171,6 +206,12 @@ public final class DeviceProvisioningManager {
         for (String key : keys) {
             if (source.has(key) && !source.isNull(key)) target.put(key, source.opt(key));
         }
+    }
+
+    private static String requireHttpBaseUrl(JSONObject settings) {
+        String value = BackendEndpointSettings.httpBaseUrl(settings);
+        if (value.isEmpty()) throw new IllegalStateException("HTTP域名/IP尚未配置");
+        return value;
     }
 
     private String machineId(JSONObject settings) {
