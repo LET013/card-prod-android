@@ -21,6 +21,12 @@ public final class BackendHttpGateway {
     public static final String EMPLOYEE_SYNC = "/api/v1/employee/sync";
     public static final String FACE_SYNC = "/api/v1/employee/face/sync";
     public static final String FINGER_SYNC = "/api/v1/employee/finger/sync";
+    public static final String EMPLOYEE_UPSERT = "/api/v1/employee";
+    public static final String EMPLOYEE_FACE_UPSERT = "/api/v1/employee/face";
+    public static final String FACE_REGISTERED = "/api/v1/employee/face/registered";
+    public static final String LOGS_BATCH = "/api/v1/logs/batch";
+    public static final String FACE_UPLOAD = "/api/v1/face/upload";
+    public static final String FINGERPRINT_UPLOAD = "/api/v1/fingerprint/upload";
 
     private final NativeSettingsRepository settingsRepository;
 
@@ -31,7 +37,7 @@ public final class BackendHttpGateway {
 
     public JSONObject get(String path) throws Exception {
         JSONObject settings = settingsRepository.load();
-        return client(settings).get(path);
+        return runtimeClient(settings).get(path);
     }
 
     public JSONObject getData(String path) throws Exception {
@@ -40,11 +46,18 @@ public final class BackendHttpGateway {
 
     public JSONObject post(String path, JSONObject body) throws Exception {
         JSONObject settings = settingsRepository.load();
-        return client(settings).post(path, body == null ? new JSONObject() : body);
+        return runtimeClient(settings).post(path, body == null ? new JSONObject() : body);
     }
 
     public JSONObject postData(String path, JSONObject body) throws Exception {
         return BackendHttpClient.dataObject(post(path, body));
+    }
+
+    /** Login itself always uses the long-lived device token, never an expired runtime token. */
+    public JSONObject postDeviceData(String path, JSONObject body) throws Exception {
+        JSONObject settings = settingsRepository.load();
+        return BackendHttpClient.dataObject(deviceClient(settings)
+                .post(path, body == null ? new JSONObject() : body));
     }
 
     /** Sends one documented device-originated V4.1 command through its HTTP equivalent. */
@@ -54,7 +67,7 @@ public final class BackendHttpGateway {
         JSONObject data = payload.optJSONObject("data");
         if (data == null) data = copyWithoutEnvelope(payload);
         switch (cmd) {
-            case "login": return postData(DEVICE_LOGIN, data);
+            case "login": return postDeviceData(DEVICE_LOGIN, data);
             case "heartbeat": return postData(DEVICE_HEARTBEAT, data);
             case "cardEvent": return postData(CARD_EVENT, data);
             case "statusReport": return postData(DEVICE_STATUS, data);
@@ -72,8 +85,12 @@ public final class BackendHttpGateway {
 
     public byte[] downloadBytes(String absoluteUrl, boolean withToken) throws Exception {
         JSONObject settings = settingsRepository.load();
-        return BackendHttpClient.downloadBytes(absoluteUrl,
-                withToken ? settings.optString("deviceToken", "") : "");
+        String token = "";
+        if (withToken) {
+            token = settings.optString("runtimeToken", "").trim();
+            if (token.isEmpty()) token = settings.optString("deviceToken", "");
+        }
+        return BackendHttpClient.downloadBytes(absoluteUrl, token);
     }
 
     public String absoluteUrl(String value) {
@@ -91,23 +108,34 @@ public final class BackendHttpGateway {
         JSONObject settings = settingsRepository.load();
         String base = baseUrl(settings);
         boolean endpointReady = !base.isEmpty();
-        boolean tokenReady = !settings.optString("deviceToken", "").isEmpty();
+        boolean deviceTokenReady = !settings.optString("deviceToken", "").isEmpty();
+        boolean runtimeTokenReady = !settings.optString("runtimeToken", "").isEmpty();
         return new JSONObject()
-                .put("state", endpointReady ? tokenReady ? "READY" : "PENDING_AUTH" : "NOT_CONFIGURED")
+                .put("state", endpointReady ? deviceTokenReady ? "READY" : "PENDING_AUTH" : "NOT_CONFIGURED")
                 .put("message", !endpointReady ? "HTTP域名/IP未配置"
-                        : tokenReady ? "HTTP端点与设备Token已就绪" : "HTTP端点已配置，等待设备注册")
+                        : deviceTokenReady ? "HTTP端点与设备Token已就绪" : "HTTP端点已配置，等待设备注册")
                 .put("apiBaseUrl", base)
                 .put("httpServerAddress", settings.optString("httpServerAddress", ""))
                 .put("httpPort", settings.optInt("httpPort", 0))
+                .put("deviceTokenReady", deviceTokenReady)
+                .put("runtimeTokenReady", runtimeTokenReady)
                 .put("deviceCode", settings.optString("deviceCode", settings.optString("deviceId", "")));
     }
 
-    private BackendHttpClient client(JSONObject settings) {
-        String base = baseUrl(settings);
-        if (base.isEmpty()) throw new IllegalStateException("HTTP域名/IP尚未配置");
+    private BackendHttpClient runtimeClient(JSONObject settings) {
         String token = settings.optString("runtimeToken", "").trim();
         if (token.isEmpty()) token = settings.optString("deviceToken", "");
-        return new BackendHttpClient(base, token);
+        return client(settings, token);
+    }
+
+    private BackendHttpClient deviceClient(JSONObject settings) {
+        return client(settings, settings.optString("deviceToken", ""));
+    }
+
+    private BackendHttpClient client(JSONObject settings, String token) {
+        String base = baseUrl(settings);
+        if (base.isEmpty()) throw new IllegalStateException("HTTP域名/IP尚未配置");
+        return new BackendHttpClient(base, token == null ? "" : token);
     }
 
     public static String baseUrl(JSONObject settings) {
