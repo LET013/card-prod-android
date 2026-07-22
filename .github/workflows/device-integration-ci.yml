@@ -22,8 +22,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -46,7 +45,11 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          required = [Path('AGENTS.md'), Path('docs/CODEX_PROJECT_GUIDE.md')]
+          required = [
+              Path('AGENTS.md'),
+              Path('docs/CODEX_PROJECT_GUIDE.md'),
+              Path('docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md'),
+          ]
           for path in required:
               assert path.is_file() and path.stat().st_size > 0, f'missing required guidance: {path}'
 
@@ -68,8 +71,7 @@ jobs:
                   metadata[key.strip()] = value.strip()
               name = metadata.get('name', '')
               description = metadata.get('description', '')
-              assert name, f'missing name: {path}'
-              assert description, f'missing description: {path}'
+              assert name and description, f'incomplete skill metadata: {path}'
               assert name == path.parent.name, f'name/directory mismatch: {path}'
               assert name not in names, f'duplicate skill name: {name}'
               assert len(description) <= 600, f'description too long: {path}'
@@ -88,40 +90,134 @@ jobs:
           print(f'validated {len(skill_files)} repository skills')
           PY
 
-      - name: Validate three-layer boundaries
+      - name: Validate complete three-layer architecture
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          facade_path = Path('app/src/main/java/com/xingyao/card/core/DeviceApplicationFacade.java')
-          bridge_path = Path('app/src/main/java/com/xingyao/card/JsBridge.java')
-          state_path = Path('uniapp/src/state/appState.js')
-          services_path = Path('uniapp/src/services/index.js')
+          root = Path('app/src/main/java/com/xingyao/card')
+          required = {
+              'bridge': root / 'JsBridge.java',
+              'activity': root / 'MainActivity.java',
+              'face_activity': root / 'FaceEnrollmentActivity.java',
+              'facade': root / 'core/DeviceApplicationFacade.java',
+              'registry': root / 'core/DeviceRuntimeRegistry.java',
+              'data_layer': root / 'core/DeviceDataLayer.java',
+              'state_store': root / 'core/DeviceStateStore.java',
+              'command_coordinator': root / 'core/DeviceCommandCoordinator.java',
+              'data_repository': root / 'core/DeviceDataRepository.java',
+              'http_gateway': root / 'core/BackendHttpGateway.java',
+              'serial': root / 'core/SerialConnectionManager.java',
+              'mqtt': root / 'core/WebSocketConnectionManager.java',
+              'service': root / 'service/DeviceCoreService.java',
+              'ui_state': Path('uniapp/src/state/appState.js'),
+              'ui_services': Path('uniapp/src/services/index.js'),
+              'native_bridge': Path('uniapp/src/services/nativeBridge.js'),
+          }
+          for name, path in required.items():
+              assert path.is_file() and path.stat().st_size > 0, f'missing {name}: {path}'
 
-          for path in [facade_path, bridge_path, state_path, services_path]:
-              assert path.is_file() and path.stat().st_size > 0, f'missing architecture file: {path}'
+          def read(name):
+              return required[name].read_text(encoding='utf-8')
 
-          bridge = bridge_path.read_text(encoding='utf-8')
-          assert 'DeviceApplicationFacade' in bridge, 'JsBridge must delegate through DeviceApplicationFacade'
-          for forbidden in ['DeviceCoreService', 'NativeSettingsRepository', 'NativeAuthManager', 'SerialConnectionManager', 'WebSocketConnectionManager']:
+          bridge = read('bridge')
+          assert 'DeviceApplicationFacade' in bridge
+          for forbidden in ['DeviceCoreService', 'DeviceDataLayer', 'DeviceStateStore',
+                            'SerialConnectionManager', 'WebSocketConnectionManager',
+                            'BackendHttpClient', 'NativeSettingsRepository', 'NativeAuthManager']:
               assert forbidden not in bridge, f'JsBridge bypasses facade via {forbidden}'
 
-          state = state_path.read_text(encoding='utf-8')
-          for forbidden in ['uni.getStorageSync', 'uni.setStorageSync', 'card.runtime.v2', 'card.slots.v2', 'card.employees.v2']:
-              assert forbidden not in state, f'Vue business projection must not persist: {forbidden}'
+          facade = read('facade')
+          assert 'DeviceRuntimeRegistry' in facade
+          for forbidden in ['DeviceCoreService', 'SerialConnectionManager',
+                            'WebSocketConnectionManager', 'BackendHttpClient',
+                            'SlotStateRepository', 'DeviceDataRepository']:
+              assert forbidden not in facade, f'Facade bypasses unified data layer via {forbidden}'
 
-          services = services_path.read_text(encoding='utf-8')
-          for forbidden in [
-              'appState.employees.unshift',
-              'appState.employees = appState.employees.filter',
-              'persistEmployees',
-              'persistSlots',
-              'persistRuntime',
-              'rebuildSlots()',
-          ]:
-              assert forbidden not in services, f'Vue service mutates or persists Android-owned data: {forbidden}'
+          service = read('service')
+          for forbidden in ['handleSocketCommand', 'handleRemoteOpen', 'sendCardEvent',
+                            'reportRuntimeEvent', 'reportSlotSnapshot', 'baseCommandResponse',
+                            'public static JSONObject', 'public static JSONArray',
+                            'public static void configureSerial', 'public static void recordOperation']:
+              assert forbidden not in service, f'DeviceCoreService contains business API/logic: {forbidden}'
+          assert 'new DeviceDataLayer' in service
+          assert 'DeviceRuntimeRegistry.install' in service
+          assert 'new SerialConnectionManager' in service
+          assert 'new WebSocketConnectionManager' in service
+
+          activity = read('activity')
+          direct_service_calls = re.findall(r'DeviceCoreService\.(?!class\b)', activity)
+          assert not direct_service_calls, 'MainActivity calls DeviceCoreService static business APIs'
+          assert 'DeviceRuntimeRegistry.setUiListener' in activity
+          assert 'DeviceRuntimeRegistry.requestFaceRestart' in activity
+          assert 'DeviceRuntimeRegistry.setUiListener(null)' in activity
+
+          face_activity = read('face_activity')
+          assert 'DeviceRuntimeRegistry.require()' in face_activity
+          assert 'DeviceCoreService' not in face_activity
+
+          data_layer = read('data_layer')
+          for required_token in ['DeviceStateStore', 'SerialPort', 'BackendPort',
+                                 'onSerialStatus', 'onSlotStatus', 'onBackendStatus',
+                                 'onBackendCommand', 'openDoor', 'searchEmployees']:
+              assert required_token in data_layer, f'DeviceDataLayer missing {required_token}'
+
+          store = read('state_store')
+          assert 'LinkedHashMap<String, JSONObject> sections' in store
+          assert 'LinkedHashMap<String, JSONObject> operations' in store
+          assert 'slotRepository.updateSlot' in store
+          assert 'emit("cabinet.slotStatus"' in store
+
+          repository = read('data_repository')
+          for token in ['LinkedHashMap<String, JSONObject> employees',
+                        'LinkedHashMap<String, JSONObject> faceFeatures',
+                        'LinkedHashMap<String, JSONObject> fingerFeatures']:
+              assert token in repository, f'Android Map cache missing: {token}'
+
+          coordinator = read('command_coordinator')
+          for token in ['InboundCommandRepository', 'DeviceOperationEngine',
+                        'BackendHttpGateway', 'handleRemoteOpen', 'handleQueryStatus']:
+              assert token in coordinator, f'command coordinator missing {token}'
+
+          for communication_name in ['serial', 'mqtt']:
+              text = read(communication_name)
+              for forbidden in ['MainActivity', 'JsBridge', 'DeviceApplicationFacade',
+                                'DeviceStateStore', 'DeviceDataLayer', 'SlotStateRepository',
+                                'DeviceOperationEngine', 'DeviceCommandCoordinator']:
+                  assert forbidden not in text, f'{communication_name} communication layer depends on {forbidden}'
+              assert 'interface Listener' in text, f'{communication_name} must expose callbacks, not UI calls'
+
+          http_constructors = []
+          for path in root.rglob('*.java'):
+              text = path.read_text(encoding='utf-8')
+              if 'new BackendHttpClient' in text:
+                  http_constructors.append(path.as_posix())
+          allowed_http = {
+              (root / 'core/BackendHttpGateway.java').as_posix(),
+              (root / 'core/DeviceProvisioningManager.java').as_posix(),
+          }
+          assert set(http_constructors).issubset(allowed_http), f'HTTP bypasses gateway: {http_constructors}'
+
+          sync = (root / 'core/DeviceDataSyncManager.java').read_text(encoding='utf-8')
+          assert 'BackendHttpGateway' in sync
+          assert 'new BackendHttpClient' not in sync
+
+          state = read('ui_state')
+          for forbidden in ['uni.getStorageSync', 'uni.setStorageSync', 'uni.removeStorageSync',
+                            'persistSettings', 'persistSlots', 'persistEmployees',
+                            'persistRuntime', 'persistSession', 'rebuildSlots',
+                            'card.runtime.v2', 'card.slots.v2', 'card.employees.v2']:
+              assert forbidden not in state, f'Vue owns/persists Android business state: {forbidden}'
+          assert 'slots: []' in state and 'employees: []' in state
+
+          services = read('ui_services')
+          for forbidden in ['persistEmployees', 'persistSlots', 'persistRuntime',
+                            'appState.employees.unshift',
+                            'appState.employees = appState.employees.filter']:
+              assert forbidden not in services, f'UI service owns Android data: {forbidden}'
           assert 'replaceEmployeesProjection' in services
           assert 'replaceSlotsProjection' in services
 
@@ -129,11 +225,17 @@ jobs:
           for path in Path('uniapp/src').rglob('*'):
               if path.suffix not in {'.js', '.vue'}:
                   continue
-              text = path.read_text(encoding='utf-8')
-              if 'window.android.postMessage' in text:
+              if 'window.android.postMessage' in path.read_text(encoding='utf-8'):
                   privileged.append(path.as_posix())
-          assert privileged == ['uniapp/src/services/nativeBridge.js'], f'direct native bridge access outside adapter: {privileged}'
-          print('validated UI -> facade -> repository/communication boundaries')
+          assert privileged == ['uniapp/src/services/nativeBridge.js'], \
+              f'direct native bridge access outside adapter: {privileged}'
+
+          temp_paths = [Path('.refactor'), Path('.batch1'),
+                        Path('.github/workflows/apply-complete-three-layer.yml')]
+          for path in temp_paths:
+              assert not path.exists(), f'temporary migration artifact remains: {path}'
+
+          print('validated strict UI -> Android data layer -> communication dependency direction')
           PY
 
       - name: Validate frontend syntax
@@ -142,6 +244,7 @@ jobs:
           set -euo pipefail
           node --check uniapp/src/services/nativeBridge.js
           node --check uniapp/src/services/index.js
+          node --check uniapp/src/services/mockService.js
           node --check uniapp/src/state/appState.js
           python3 - <<'PY'
           from pathlib import Path
@@ -164,6 +267,14 @@ jobs:
           npm run build:h5
           test -s dist/build/h5/index.html
 
+      - name: Install generated H5 assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf app/src/main/assets/*
+          cp -R uniapp/dist/build/h5/. app/src/main/assets/
+          test -s app/src/main/assets/index.html
+
       - name: Run Android unit tests
         shell: bash
         run: |
@@ -171,8 +282,9 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 
-      - name: Build debug APK with H5 assets
+      - name: Build debug APK with generated H5 assets
         shell: bash
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --console=plain
+          test -s app/build/outputs/apk/debug/app-debug.apk
