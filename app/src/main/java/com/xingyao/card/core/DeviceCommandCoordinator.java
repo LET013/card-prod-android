@@ -6,8 +6,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Locale;
 
 /** Data-layer business command coordinator for MQTT commands and backend reports. */
@@ -15,6 +13,11 @@ public final class DeviceCommandCoordinator {
     public interface BackendPort {
         void send(JSONObject payload) throws Exception;
         boolean isAuthenticated();
+        String transportMode();
+    }
+
+    public interface ConfigControl {
+        void apply(JSONObject settings) throws Exception;
     }
 
     public interface AppControl {
@@ -29,6 +32,7 @@ public final class DeviceCommandCoordinator {
     private final BackendPort backendPort;
     private final BackendHttpGateway httpGateway;
     private final AppControl appControl;
+    private final ConfigControl configControl;
 
     public DeviceCommandCoordinator(DeviceStateStore stateStore,
                                     NativeSettingsRepository settingsRepository,
@@ -37,7 +41,8 @@ public final class DeviceCommandCoordinator {
                                     DeviceOperationEngine operationEngine,
                                     BackendPort backendPort,
                                     BackendHttpGateway httpGateway,
-                                    AppControl appControl) {
+                                    AppControl appControl,
+                                    ConfigControl configControl) {
         this.stateStore = stateStore;
         this.settingsRepository = settingsRepository;
         this.inboundRepository = inboundRepository;
@@ -46,6 +51,7 @@ public final class DeviceCommandCoordinator {
         this.backendPort = backendPort;
         this.httpGateway = httpGateway;
         this.appControl = appControl;
+        this.configControl = configControl;
     }
 
     public void handle(JSONObject command) {
@@ -139,12 +145,15 @@ public final class DeviceCommandCoordinator {
                     .put("employeeId", safe(employeeId))
                     .put("physicalConfirmed", false);
             JSONObject payload = new JSONObject().put("cmd", "cardEvent").put("data", data);
-            try { send(payload); }
+            boolean sent = false;
+            try { send(payload); sent = true; }
             catch (Exception error) {
                 stateStore.record("backend.cardEvent.failed", new JSONObject()
                         .put("message", safeMessage(error)).put("payload", payload));
             }
-            postAsync("/api/v1/card/event", data, "http.card.event");
+            if (!sent && !BackendEndpointSettings.MODE_HTTP.equals(backendPort.transportMode())) {
+                postAsync(BackendHttpGateway.CARD_EVENT, data, "http.card.event.fallback");
+            }
         } catch (Exception error) {
             stateStore.record("card.event.build.failed", message(error));
         }
@@ -297,11 +306,14 @@ public final class DeviceCommandCoordinator {
     }
 
     private void handleSyncConfig(JSONObject command) throws Exception {
-        JSONObject settings = settingsRepository.load();
+        JSONObject current = settingsRepository.load();
+        JSONObject remote = httpGateway.getData(BackendHttpGateway.DEVICE_CONFIG);
+        JSONObject saved = settingsRepository.save(DeviceConfigMapper.apply(current, remote));
+        if (configControl != null) configControl.apply(saved);
         complete(command, baseResponse(command, "syncConfigResp")
-                .put("code", 0).put("status", "SUCCESS").put("msg", "accepted")
+                .put("code", 0).put("status", "SUCCESS").put("msg", "success")
                 .put("deviceCode", currentDeviceCode())
-                .put("configUpdatedAt", settings.optLong("provisionedAt", 0L)), true);
+                .put("configUpdatedAt", saved.optLong("remoteConfigUpdatedAt", 0L)), true);
     }
 
     private void handleUnsupportedUpgrade(JSONObject command, boolean cancel) throws Exception {
@@ -325,9 +337,7 @@ public final class DeviceCommandCoordinator {
                 .put("sync", snapshot.opt("sync"))
                 .put("slotSummary", stateStore.slotSummary())
                 .put("timestamp", System.currentTimeMillis());
-        reportRuntimeEvent("selfCheckReport", "/api/v1/device/selfcheck", data);
-        reportRuntimeEvent("statisticsReport", "/api/v1/statistics/report",
-                statisticsData(data.optJSONObject("slotSummary")));
+        reportRuntimeEvent("selfCheckReport", BackendHttpGateway.DEVICE_SELF_CHECK, data);
         complete(command, baseResponse(command, "deviceSelfCheckResp")
                 .put("code", 0).put("status", "SUCCESS")
                 .put("msg", "success").put("data", data), true);
@@ -359,13 +369,15 @@ public final class DeviceCommandCoordinator {
         JSONObject payload = new JSONObject();
         try {
             payload.put("cmd", cmd).put("data", data == null ? new JSONObject() : data);
-            try { send(payload); }
+            boolean sent = false;
+            try { send(payload); sent = true; }
             catch (Exception error) {
                 stateStore.record("backend." + cmd + ".failed", new JSONObject()
                         .put("message", safeMessage(error)).put("payload", payload));
             }
-            if (httpPath != null && !httpPath.trim().isEmpty()) {
-                postAsync(httpPath, data, "http." + cmd);
+            if (!sent && !BackendEndpointSettings.MODE_HTTP.equals(backendPort.transportMode())
+                    && httpPath != null && !httpPath.trim().isEmpty()) {
+                postAsync(httpPath, data, "http." + cmd + ".fallback");
             }
         } catch (JSONException ignored) { }
     }
@@ -432,18 +444,6 @@ public final class DeviceCommandCoordinator {
         }
     }
 
-    private static JSONObject statisticsData(JSONObject summary) throws JSONException {
-        JSONObject source = summary == null ? new JSONObject() : summary;
-        return new JSONObject()
-                .put("statDate", new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()))
-                .put("takeCount", 0).put("returnCount", 0)
-                .put("occupiedCount", source.optInt("occupiedCount", 0))
-                .put("emptyCount", source.optInt("emptyCount", 0))
-                .put("faultCount", source.optInt("faultCount", 0))
-                .put("chargingCount", source.optInt("chargingCount", 0))
-                .put("fullCount", source.optInt("fullCount", 0));
-    }
-
     private static int parseFaultCode(String value) {
         if (value == null || value.isEmpty()) return 0;
         try {
@@ -458,8 +458,9 @@ public final class DeviceCommandCoordinator {
         String authType = value == null ? "" : value.toUpperCase(Locale.US);
         if ("FINGER".equals(authType)) return "FINGERPRINT";
         if ("FACE".equals(authType) || "FINGERPRINT".equals(authType)
-                || "ADMIN".equals(authType) || "CARD".equals(authType)) return authType;
-        return "ADMIN";
+                || "ADMIN".equals(authType) || "CARD".equals(authType)
+                || "REMOTE".equals(authType)) return authType;
+        return "UNKNOWN";
     }
 
     private static JSONObject message(Throwable error) {

@@ -36,6 +36,7 @@ public final class DeviceDataLayer {
     public interface BackendPort extends DeviceCommandCoordinator.BackendPort {
         JSONObject snapshot() throws JSONException;
         void configure(JSONObject settings);
+        String transportMode();
     }
 
     private final Context context;
@@ -46,6 +47,7 @@ public final class DeviceDataLayer {
     private final SerialPort serialPort;
     private final BackendPort backendPort;
     private final ArcFaceManager arcFaceManager;
+    private final ArcFaceTemplateCleaner templateCleaner;
     private final BackendHttpGateway httpGateway;
     private final DeviceCommandCoordinator commandCoordinator;
     private final DeviceOperationEngine operationEngine;
@@ -65,6 +67,7 @@ public final class DeviceDataLayer {
                            SerialPort serialPort,
                            BackendPort backendPort,
                            ArcFaceManager arcFaceManager,
+                           ArcFaceTemplateCleaner templateCleaner,
                            BackendHttpGateway httpGateway,
                            InboundCommandRepository inboundRepository,
                            DeviceCommandCoordinator.AppControl appControl) {
@@ -76,6 +79,7 @@ public final class DeviceDataLayer {
         this.serialPort = serialPort;
         this.backendPort = backendPort;
         this.arcFaceManager = arcFaceManager;
+        this.templateCleaner = templateCleaner;
         this.httpGateway = httpGateway;
         this.operationEngine = new DeviceOperationEngine(new DeviceOperationEngine.SerialGateway() {
             @Override public JSONObject openDoor(int slotNumber, boolean administrator) throws Exception {
@@ -87,7 +91,8 @@ public final class DeviceDataLayer {
             }
         }, stateStore::recordOperation);
         this.commandCoordinator = new DeviceCommandCoordinator(stateStore, settingsRepository,
-                inboundRepository, syncManager, operationEngine, backendPort, httpGateway, appControl);
+                inboundRepository, syncManager, operationEngine, backendPort, httpGateway,
+                appControl, this::applyRemoteSettings);
     }
 
     public void start(JSONObject settings) {
@@ -143,18 +148,29 @@ public final class DeviceDataLayer {
     }
 
     public JSONObject deleteEmployee(String id) throws JSONException {
-        boolean deleted = stateStore.deleteEmployee(id);
-        return new JSONObject().put("success", deleted).put("id", id);
+        String employeeId = stateStore.deleteEmployee(id);
+        if (!employeeId.isEmpty()) templateCleaner.deleteTemplate(employeeId);
+        return new JSONObject().put("success", !employeeId.isEmpty())
+                .put("id", id).put("employeeId", employeeId);
     }
 
     public void applySettings(JSONObject settings) throws JSONException {
+        applySettingsInternal(settings, true);
+    }
+
+    private void applyRemoteSettings(JSONObject settings) throws JSONException {
+        applySettingsInternal(settings, false);
+    }
+
+    private void applySettingsInternal(JSONObject settings, boolean reconnectBackend) throws JSONException {
         JSONObject safeSettings = settings == null ? new JSONObject() : settings;
         stateStore.configure(safeSettings);
         serialPort.configure(safeSettings);
-        backendPort.configure(safeSettings);
+        if (reconnectBackend) backendPort.configure(safeSettings);
         startupSyncCompleted = false;
         startSlotReporter(safeSettings);
         stateStore.updateSection("http", "http.statusChanged", httpGateway.snapshot());
+        stateStore.emit("settings.changed", settingsRepository.loadForUi());
     }
 
     public void reconnectSerial() {
@@ -245,9 +261,10 @@ public final class DeviceDataLayer {
 
     public void markFingerprintAuthorized(String employeeId, String employeeName) {
         try {
-            dataRepository.markFingerprintRegistered(employeeId, employeeName, true);
+            dataRepository.markSystemBiometricAuthorized(employeeId, employeeName, true);
             JSONObject event = new JSONObject().put("employeeId", employeeId)
-                    .put("fingerprintRegistered", true)
+                    .put("systemBiometricAuthorized", true)
+                    .put("fingerprintRegistered", false)
                     .put("scope", "SYSTEM_DEVICE_BIOMETRIC");
             stateStore.record("biometric.fingerprint.authorized", event);
             stateStore.emit("sync.employeeChanged", event);

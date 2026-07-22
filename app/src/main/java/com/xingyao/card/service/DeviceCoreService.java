@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat;
 
 import com.xingyao.card.R;
 import com.xingyao.card.core.ArcFaceManager;
+import com.xingyao.card.core.ArcFaceTemplateCleaner;
 import com.xingyao.card.core.BackendHttpGateway;
 import com.xingyao.card.core.DeviceCommandCoordinator;
 import com.xingyao.card.core.DeviceDataLayer;
@@ -96,8 +97,9 @@ public final class DeviceCoreService extends Service {
         arcFaceManager = new ArcFaceManager(this, status -> {
             if (holder[0] != null) holder[0].onRecognitionStatus(status);
         });
+        ArcFaceTemplateCleaner templateCleaner = new ArcFaceTemplateCleaner(this);
         DeviceDataSyncManager syncManager = new DeviceDataSyncManager(settingsRepository,
-                dataRepository, arcFaceManager, httpGateway);
+                dataRepository, arcFaceManager, templateCleaner, httpGateway);
 
         DeviceDataLayer.SerialPort serialPort = new DeviceDataLayer.SerialPort() {
             @Override public JSONObject snapshot() throws JSONException { return serialManager.snapshot(); }
@@ -130,6 +132,7 @@ public final class DeviceCoreService extends Service {
             @Override public void configure(JSONObject value) { backendManager.configure(value); }
             @Override public void send(JSONObject payload) throws Exception { backendManager.send(payload); }
             @Override public boolean isAuthenticated() { return backendManager.isAuthenticated(); }
+            @Override public String transportMode() { return backendManager.transportMode(); }
         };
         DeviceCommandCoordinator.AppControl appControl = delayMs ->
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -141,7 +144,7 @@ public final class DeviceCoreService extends Service {
                 }, Math.max(0L, delayMs));
 
         dataLayer = new DeviceDataLayer(this, settingsRepository, stateStore, dataRepository,
-                syncManager, serialPort, backendPort, arcFaceManager, httpGateway,
+                syncManager, serialPort, backendPort, arcFaceManager, templateCleaner, httpGateway,
                 new InboundCommandRepository(this), appControl);
         holder[0] = dataLayer;
         DeviceRuntimeRegistry.install(dataLayer);

@@ -67,6 +67,7 @@ public final class SerialConnectionManager {
     private long responseTimeoutMs = RESPONSE_TIMEOUT_MS;
     private long commandGapMs = COMMAND_GAP_MS;
     private long pollingIntervalMs = POLLING_INTERVAL_MS;
+    private String cardNumberMode = "VISIBLE";
 
     public SerialConnectionManager(Context context, Listener listener) {
         settingsRepository = new NativeSettingsRepository(context.getApplicationContext());
@@ -88,8 +89,10 @@ public final class SerialConnectionManager {
         commandGapMs = parsePositiveLong(settings == null ? "" : settings.optString("serialCommandGapMs", ""), COMMAND_GAP_MS);
         pollingIntervalMs = parsePositiveLong(settings == null ? "" : settings.optString("serialPollingIntervalMs",
                 settings.optString("backendPollingIntervalMs", "")), POLLING_INTERVAL_MS);
-        pollingEnabled = settings != null && settings.optBoolean("serialPollingEnabled",
-                settings.optBoolean("singleGroupPollingEnabled", false));
+        pollingEnabled = settings != null && settings.optBoolean("serialPollingEnabled", true);
+        cardNumberMode = settings == null ? "VISIBLE"
+                : settings.optString("cardNumberMode", "VISIBLE").trim().toUpperCase(Locale.US);
+        if (!"PHYSICAL".equals(cardNumberMode)) cardNumberMode = "VISIBLE";
         open(configuredPort.isEmpty() ? DEFAULT_PORT : configuredPort, configuredBaud);
     }
 
@@ -203,7 +206,7 @@ public final class SerialConnectionManager {
                     .put("failures", failures)
                     .put("singleGroupCount", singleGroupCount)
                     .put("totalSlots", totalSlots)
-                    .put("message", "已按单组数量发送全部卡门开门指令");
+                    .put("message", "已按V1.5直接从机地址逐个发送开门指令");
         }
     }
 
@@ -213,6 +216,8 @@ public final class SerialConnectionManager {
                 .put("singleGroupCount", singleGroupCount).put("pollingAddressLimit", pollingAddressLimit())
                 .put("responseTimeoutMs", responseTimeoutMs).put("pollingIntervalMs", pollingIntervalMs)
                 .put("commandGapMs", commandGapMs)
+                .put("cardNumberMode", cardNumberMode)
+                .put("addressMode", "DIRECT")
                 .put("sentBytes", sentBytes).put("receivedBytes", receivedBytes)
                 .put("lastReceivedAt", lastReceivedAt == 0 ? JSONObject.NULL : lastReceivedAt)
                 .put("lastError", lastError.isEmpty() ? JSONObject.NULL : lastError)
@@ -483,7 +488,11 @@ public final class SerialConnectionManager {
         int door = unsigned(frame.data[offset + 1]);
         int card = unsigned(frame.data[offset + 2]);
         int changed = unsigned(frame.data[offset + 3]);
-        String cardNo = new String(frame.data, offset + 4, 15, StandardCharsets.US_ASCII).replace("\u0000", "").trim();
+        byte[] cardBytes = new byte[15];
+        System.arraycopy(frame.data, offset + 4, cardBytes, 0, cardBytes.length);
+        String rawCardHex = WorkCardProtocol.hex(cardBytes);
+        String cardNo = "PHYSICAL".equals(cardNumberMode) ? rawCardHex
+                : new String(cardBytes, StandardCharsets.US_ASCII).replace("\u0000", "").trim();
         int fault = unsigned(frame.data[offset + 19]);
         double voltage = unsigned(frame.data[offset + 20]) * 0.05D;
         double current = unsigned(frame.data[offset + 21]) * 0.01D;
@@ -492,6 +501,7 @@ public final class SerialConnectionManager {
                 .put("workCode", work).put("doorCode", door).put("cardCode", card).put("faultMask", fault)
                 .put("workStatus", mapWork(work)).put("presenceStatus", mapPresence(card))
                 .put("doorStatus", mapDoor(door)).put("cardNumber", cardNo)
+                .put("rawCardHex", rawCardHex).put("cardNumberMode", cardNumberMode)
                 .put("faultCode", fault == 0 ? "" : String.format("0x%02X", fault)).put("faultMessage", faultMessage(fault))
                 .put("voltage", voltage).put("current", current).put("cardChanged", changed == 1)
                 .put("updatedAt", System.currentTimeMillis());
@@ -548,9 +558,10 @@ public final class SerialConnectionManager {
     private static int unsigned(byte value) { return value & 0xFF; }
     private static String safeMessage(Exception error) { String value = error.getMessage(); return value == null || value.trim().isEmpty() ? error.getClass().getSimpleName() : value; }
     private int serialAddressForSlot(int slotNumber) {
-        int groupSize = Math.max(1, singleGroupCount);
-        if (groupSize >= totalSlots) return slotNumber;
-        return ((slotNumber - 1) % groupSize) + 1;
+        if (slotNumber < 1 || slotNumber > 255) {
+            throw new IllegalArgumentException("V1.5从机地址必须在1至255之间");
+        }
+        return slotNumber;
     }
-    private int pollingAddressLimit() { return Math.max(1, Math.min(totalSlots, singleGroupCount)); }
+    private int pollingAddressLimit() { return Math.max(1, Math.min(totalSlots, 255)); }
 }

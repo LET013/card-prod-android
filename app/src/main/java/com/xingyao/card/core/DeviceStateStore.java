@@ -152,27 +152,21 @@ public final class DeviceStateStore {
         return dataRepository.searchEmployees(query);
     }
 
-    public boolean deleteEmployee(String id) throws JSONException {
-        boolean deleted = dataRepository.deleteEmployee(id);
-        if (deleted) {
-            JSONObject event = new JSONObject().put("success", true).put("id", id);
+    public String deleteEmployee(String id) throws JSONException {
+        String employeeId = dataRepository.deleteEmployee(id);
+        if (!employeeId.isEmpty()) {
+            JSONObject event = new JSONObject().put("success", true)
+                    .put("id", id).put("employeeId", employeeId);
             record("state.employee.deleted", event);
             emit("sync.employeeChanged", event);
         }
-        return deleted;
+        return employeeId;
     }
 
     public JSONObject businessDataSnapshot() throws JSONException {
         return dataRepository.snapshot();
     }
 
-    public DeviceDataRepository dataRepository() {
-        return dataRepository;
-    }
-
-    public SlotStateRepository slotRepository() {
-        return slotRepository;
-    }
 
     private void seedDefaults() {
         synchronized (lock) {

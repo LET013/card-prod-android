@@ -16,18 +16,22 @@ public final class DeviceDataSyncManager {
     private final NativeSettingsRepository settingsRepository;
     private final DeviceDataRepository dataRepository;
     private final ArcFaceManager arcFaceManager;
+    private final ArcFaceTemplateCleaner templateCleaner;
     private final BackendHttpGateway httpGateway;
 
     public DeviceDataSyncManager(NativeSettingsRepository settingsRepository,
                                  DeviceDataRepository dataRepository,
                                  ArcFaceManager arcFaceManager,
+                                 ArcFaceTemplateCleaner templateCleaner,
                                  BackendHttpGateway httpGateway) {
         if (settingsRepository == null) throw new IllegalArgumentException("settingsRepository is required");
         if (dataRepository == null) throw new IllegalArgumentException("dataRepository is required");
+        if (templateCleaner == null) throw new IllegalArgumentException("templateCleaner is required");
         if (httpGateway == null) throw new IllegalArgumentException("httpGateway is required");
         this.settingsRepository = settingsRepository;
         this.dataRepository = dataRepository;
         this.arcFaceManager = arcFaceManager;
+        this.templateCleaner = templateCleaner;
         this.httpGateway = httpGateway;
     }
 
@@ -242,7 +246,7 @@ public final class DeviceDataSyncManager {
             }
             if (isDisabled(face)) {
                 try {
-                    arcFaceManager.deleteTemplate(employeeId);
+                    templateCleaner.deleteTemplate(employeeId);
                     deletedCount++;
                 } catch (Exception error) {
                     failures.put(failure(face, safeMessage(error)));
@@ -286,7 +290,7 @@ public final class DeviceDataSyncManager {
             }
         }
         if (full && failures.length() == 0) {
-            deletedCount += arcFaceManager.deleteTemplatesNotIn(activeEmployeeIds);
+            deletedCount += templateCleaner.deleteTemplatesNotIn(activeEmployeeIds);
         }
         return result.put("successCount", successCount)
                 .put("deletedCount", deletedCount)
@@ -297,11 +301,11 @@ public final class DeviceDataSyncManager {
     }
 
     private void deleteEmployeeTemplates(JSONArray deletedEmployeeIds) {
-        if (arcFaceManager == null || deletedEmployeeIds == null) return;
+        if (deletedEmployeeIds == null) return;
         for (int index = 0; index < deletedEmployeeIds.length(); index++) {
             String id = String.valueOf(deletedEmployeeIds.opt(index)).trim();
             if (id.isEmpty()) continue;
-            try { arcFaceManager.deleteTemplate(id); }
+            try { templateCleaner.deleteTemplate(id); }
             catch (Exception ignored) { }
         }
     }

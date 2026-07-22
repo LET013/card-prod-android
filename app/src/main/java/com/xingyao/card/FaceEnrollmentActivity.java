@@ -17,6 +17,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.xingyao.card.core.DeviceRuntimeRegistry;
+import com.xingyao.card.core.NativeSettingsRepository;
 
 import org.json.JSONObject;
 
@@ -102,7 +103,7 @@ public class FaceEnrollmentActivity extends Activity implements SurfaceHolder.Ca
             camera.setParameters(parameters);
             previewWidth = size.width;
             previewHeight = size.height;
-            camera.setDisplayOrientation(90);
+            camera.setDisplayOrientation(configuredCameraRotation());
             camera.setPreviewDisplay(surfaceHolder);
             camera.setPreviewCallback(this);
             camera.startPreview();
@@ -134,6 +135,16 @@ public class FaceEnrollmentActivity extends Activity implements SurfaceHolder.Ca
                 processing = false;
             }
         });
+    }
+
+    private int configuredCameraRotation() {
+        try {
+            int rotation = new NativeSettingsRepository(this).load().optInt("cameraRotation", 90);
+            return rotation == 0 || rotation == 90 || rotation == 180 || rotation == 270
+                    ? rotation : 90;
+        } catch (Exception ignored) {
+            return 90;
+        }
     }
 
     private int findFrontCamera() {

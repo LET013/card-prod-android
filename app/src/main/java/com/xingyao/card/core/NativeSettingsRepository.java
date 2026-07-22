@@ -185,11 +185,14 @@ public class NativeSettingsRepository {
             // The old UI stored one serverAddress for unrelated transports. Preserve it only as a
             // migration hint; endpoint normalization separates HTTP/MQTT/TCP afterwards.
             String legacyServer = settings.optString("serverAddress", "").trim();
-            if (settings.optString("httpServerAddress", "").trim().isEmpty()
-                    && (legacyServer.startsWith("http://") || legacyServer.startsWith("https://"))) {
+            String legacyHttp = settings.optString("apiBaseUrl", "").trim();
+            String legacyMqtt = settings.optString("mqttBrokerUrl", "").trim();
+            if (!legacyHttp.isEmpty()) settings.put("httpServerAddress", legacyHttp);
+            else if (legacyServer.startsWith("http://") || legacyServer.startsWith("https://")) {
                 settings.put("httpServerAddress", legacyServer);
             }
-            if (settings.optString("tcpServerAddress", "").trim().isEmpty()
+            if (!legacyMqtt.isEmpty()) settings.put("mqttServerAddress", legacyMqtt);
+            if (!legacyServer.isEmpty()
                     && !legacyServer.startsWith("http://") && !legacyServer.startsWith("https://")) {
                 settings.put("tcpServerAddress", legacyServer);
             }
