@@ -7,9 +7,6 @@ on:
     paths:
       - '.batch1/**'
       - '.github/workflows/apply-device-batch1.yml'
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -34,6 +31,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle 8.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+
       - name: Reconstruct audited patch
         shell: bash
         run: |
@@ -46,6 +48,18 @@ jobs:
           echo "0fe70e3bf255355bdee873592dae627c325d6c2f31f06e30516dedbae4fae4e9  /tmp/device-batch1.patch" | sha256sum -c -
           git apply --check /tmp/device-batch1.patch
           git apply /tmp/device-batch1.patch
+
+      - name: Restore complete Gradle Wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle wrapper --gradle-version 8.6 --distribution-type bin
+          chmod +x gradlew
+          if ! grep -qxF '!gradle/wrapper/gradle-wrapper.jar' .gitignore; then
+            printf '\n# Keep the reproducible Gradle Wrapper binary\n!gradle/wrapper/gradle-wrapper.jar\n' >> .gitignore
+          fi
+          test -s gradle/wrapper/gradle-wrapper.jar
+          ./gradlew --version
 
       - name: Validate frontend syntax
         shell: bash
@@ -69,10 +83,9 @@ jobs:
         shell: bash
         run: |
           set +e
-          chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/gradle-test.log 2>&1
           status=$?
-          tail -n 180 /tmp/gradle-test.log
+          tail -n 220 /tmp/gradle-test.log
           exit $status
 
       - name: Upload Android test failure log
@@ -101,6 +114,9 @@ jobs:
                 - 'app/**'
                 - 'uniapp/**'
                 - 'docs/**'
+                - 'gradle/**'
+                - 'gradlew'
+                - 'gradlew.bat'
                 - '.github/workflows/device-integration-ci.yml'
             workflow_dispatch:
 
@@ -137,12 +153,9 @@ jobs:
                 - name: Run Android unit tests
                   shell: bash
                   run: |
-                    set +e
+                    set -euo pipefail
                     chmod +x gradlew
-                    ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/gradle-test.log 2>&1
-                    status=$?
-                    tail -n 180 /tmp/gradle-test.log
-                    exit $status
+                    ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
           YAML
 
       - name: Commit audited batch
