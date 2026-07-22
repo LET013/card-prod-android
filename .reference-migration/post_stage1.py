@@ -23,6 +23,27 @@ value = value.replace('''        } catch (Throwable error) {
             update("ERROR", "FaceAISDK初始化失败：" + safeMessage(error));
             throw new IllegalStateException("FaceAISDK初始化失败：" + safeMessage(error), error);
         }''')
+value = value.replace('''    public synchronized void restart() {''', '''    public synchronized void start() {
+        if (!initialized) {
+            if (appContext == null) throw new IllegalStateException("FaceAISDK尚未配置Context");
+            init(appContext, listener);
+        }
+    }
+
+    public synchronized void stop() {
+        release();
+    }
+
+    public synchronized void restart() {''')
+write(path, value)
+
+# FaceEnrollmentController is in the UI package and reaches the Android data layer only through the
+# runtime registry. It must not import the FaceAISDK adapter directly.
+path = 'app/src/main/java/com/xingyao/card/FaceEnrollmentController.java'
+value = read(path)
+if 'import com.xingyao.card.core.DeviceRuntimeRegistry;' not in value:
+    value = value.replace('import com.xingyao.card.core.',
+                          'import com.xingyao.card.core.DeviceRuntimeRegistry;\n\nimport com.xingyao.card.core.', 1)
 write(path, value)
 
 # The stage script deliberately performs broad type replacement. Normalize the sync constructor to
