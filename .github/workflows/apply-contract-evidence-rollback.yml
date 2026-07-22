@@ -75,6 +75,7 @@ jobs:
               "assert 'runtimeToken\", \"\"' not in gateway, 'runtimeToken used as HTTP Bearer'",
               "assert 'String token = settings.optString(\"runtimeToken\"' not in gateway, 'runtimeToken used as HTTP Bearer'",
               1)
+          s = s.replace(r'replaceAll("\\s+", "")', r'replaceAll("\\\\s+", "")')
           p.write_text(s, encoding='utf-8')
           PY
 
