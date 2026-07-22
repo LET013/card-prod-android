@@ -3,6 +3,8 @@ package com.xingyao.card.core;
 import android.content.Context;
 import android.util.Base64;
 
+import com.xingyao.card.BuildConfig;
+
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttAsyncClient;
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
@@ -41,6 +43,7 @@ public class WebSocketConnectionManager {
     private static final String MODE_TCP = "TCP";
     private static final long HEARTBEAT_INTERVAL_MS = 30000L;
     private static final long RECONNECT_DELAY_MS = 5000L;
+    private static final long LOGIN_TIMEOUT_MS = 15000L;
     private static final int MQTT_KEEP_ALIVE_SECONDS = 60;
     private static final int MQTT_CONNECTION_TIMEOUT_SECONDS = 10;
 
@@ -48,16 +51,19 @@ public class WebSocketConnectionManager {
     private final DeviceProvisioningManager provisioningManager;
     private final Listener listener;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
 
     private ScheduledFuture<?> reconnectTask;
     private ScheduledFuture<?> heartbeatTask;
+    private ScheduledFuture<?> loginTimeoutTask;
+    private long loginAttemptGeneration;
     private MqttAsyncClient mqttClient;
     private Socket tcpSocket;
     private BufferedOutputStream tcpOutput;
     private volatile boolean running;
     private volatile boolean connecting;
-    private String state = "DISCONNECTED";
-    private String message = "后端通信未启动";
+    private volatile String state = "DISCONNECTED";
+    private volatile String message = "后端通信未启动";
     private String transportMode = MODE_MQTT;
     private String deviceId = "DEV001";
     private String deviceCode = "DEV001";
@@ -75,9 +81,10 @@ public class WebSocketConnectionManager {
     private int tcpPort = 0;
     private long sentMessages;
     private long receivedMessages;
-    private long lastConnectedAt;
-    private long lastMessageAt;
-    private String lastError = "";
+    private volatile long lastConnectedAt;
+    private volatile long authenticatedAt;
+    private volatile long lastMessageAt;
+    private volatile String lastError = "";
 
     public WebSocketConnectionManager(Context context, NativeSettingsRepository settingsRepository, Listener listener) {
         this.settingsRepository = settingsRepository;
@@ -100,7 +107,10 @@ public class WebSocketConnectionManager {
         running = false;
         cancelReconnect();
         stopHeartbeat();
+        cancelLoginTimeout();
         closeTransports();
+        heartbeatExecutor.shutdownNow();
+        executor.shutdownNow();
         updateState("DISCONNECTED", "后端通信已停止", null);
     }
 
@@ -122,12 +132,24 @@ public class WebSocketConnectionManager {
                 .put("heartbeatTopic", heartbeatTopic)
                 .put("sentMessages", sentMessages)
                 .put("receivedMessages", receivedMessages)
+                .put("transportConnected", isTransportConnected())
+                .put("authenticated", "AUTHENTICATED".equals(state))
                 .put("lastConnectedAt", lastConnectedAt == 0 ? JSONObject.NULL : lastConnectedAt)
+                .put("authenticatedAt", authenticatedAt == 0 ? JSONObject.NULL : authenticatedAt)
                 .put("lastMessageAt", lastMessageAt == 0 ? JSONObject.NULL : lastMessageAt)
                 .put("lastError", lastError.isEmpty() ? JSONObject.NULL : lastError);
     }
 
+    public synchronized boolean isAuthenticated() {
+        return "AUTHENTICATED".equals(state);
+    }
+
     public void send(JSONObject payload) throws Exception {
+        String cmd = payload == null ? "" : payload.optString("cmd", "");
+        boolean lifecycleMessage = "login".equals(cmd) || "heartbeat".equals(cmd);
+        if (!lifecycleMessage && !"AUTHENTICATED".equals(state)) {
+            throw new IllegalStateException("后端业务会话尚未认证，当前状态：" + state);
+        }
         if (MODE_TCP.equals(transportMode)) sendTcp(payload);
         else publishMqtt(payload);
     }
@@ -135,6 +157,7 @@ public class WebSocketConnectionManager {
     private void reconnectNow() {
         cancelReconnect();
         stopHeartbeat();
+        cancelLoginTimeout();
         closeTransports();
         if (MODE_TCP.equals(transportMode)) connectTcp();
         else connectMqtt();
@@ -188,16 +211,23 @@ public class WebSocketConnectionManager {
                     @Override public void connectComplete(boolean reconnect, String serverURI) {
                         try {
                             lastConnectedAt = System.currentTimeMillis();
-                            updateState("CONNECTED", String.format(Locale.US, "MQTT已连接 %s auth=%s", serverURI, authLabel), null);
+                            authenticatedAt = 0L;
+                            updateState("TRANSPORT_CONNECTED", String.format(Locale.US, "MQTT传输已连接 %s auth=%s", serverURI, authLabel), null);
                             subscribeTopics(callbackClient);
+                            updateState("SUBSCRIBED", "MQTT指令Topic订阅完成", null);
+                            updateState("LOGIN_SENT", "正在发送MQTT登录请求", null);
                             sendLogin();
-                            startHeartbeat();
+                            startLoginTimeout();
                         } catch (Exception error) {
                             updateState("ERROR", "MQTT订阅/登录失败：" + safeMessage(error), error);
+                            if (running) scheduleReconnect();
                         }
                     }
 
                     @Override public void connectionLost(Throwable cause) {
+                        stopHeartbeat();
+                        cancelLoginTimeout();
+                        authenticatedAt = 0L;
                         updateState("ERROR", "MQTT连接断开：" + (cause == null ? "unknown" : cause.getMessage()), cause instanceof Exception ? (Exception) cause : null);
                         if (running) scheduleReconnect();
                     }
@@ -285,9 +315,11 @@ public class WebSocketConnectionManager {
                     connecting = false;
                     lastConnectedAt = System.currentTimeMillis();
                 }
-                updateState("CONNECTED", String.format(Locale.US, "TCP已连接 %s:%d", tcpHost, tcpPort), null);
+                authenticatedAt = 0L;
+                updateState("TRANSPORT_CONNECTED", String.format(Locale.US, "TCP传输已连接 %s:%d", tcpHost, tcpPort), null);
+                updateState("LOGIN_SENT", "正在发送TCP登录请求", null);
                 sendLogin();
-                startHeartbeat();
+                startLoginTimeout();
                 readTcpLoop(nextSocket);
             } catch (Exception error) {
                 synchronized (this) { connecting = false; }
@@ -314,6 +346,8 @@ public class WebSocketConnectionManager {
         } finally {
             closeTransports();
             stopHeartbeat();
+            cancelLoginTimeout();
+            authenticatedAt = 0L;
             if (running) scheduleReconnect();
         }
     }
@@ -344,23 +378,97 @@ public class WebSocketConnectionManager {
             payload.put("_source", source);
             notifyMessage(payload);
             String cmd = payload.optString("cmd", "");
-            if (!"heartbeatResp".equals(cmd) && !cmd.endsWith("Resp")) notifyCommand(commandFromEnvelope(payload));
+            if ("loginResp".equals(cmd)) {
+                handleLoginResponse(payload);
+                return;
+            }
+            if ("heartbeatResp".equals(cmd) || cmd.endsWith("Resp")) return;
+            if (!"AUTHENTICATED".equals(state)) {
+                updateState("AUTH_REQUIRED", "收到业务指令但设备尚未完成登录认证", null);
+                return;
+            }
+            notifyCommand(commandFromEnvelope(payload));
         } catch (JSONException error) {
             updateState("ERROR", "后端消息不是合法JSON：" + text, error);
         }
+    }
+
+    private void handleLoginResponse(JSONObject payload) {
+        synchronized (this) {
+            if (!"LOGIN_SENT".equals(state)) return;
+            cancelLoginTimeout();
+        }
+        JSONObject data = payload == null ? null : payload.optJSONObject("data");
+        int code = payload != null && payload.has("code")
+                ? payload.optInt("code", -1)
+                : data == null ? -1 : data.optInt("code", -1);
+        boolean explicitFailure = (payload != null && payload.has("success") && !payload.optBoolean("success", false))
+                || (data != null && data.has("success") && !data.optBoolean("success", false))
+                || code > 0;
+        String status = payload == null ? "" : payload.optString("status", "");
+        if (status.isEmpty() && data != null) status = data.optString("status", "");
+        if ("FAILED".equalsIgnoreCase(status) || "DENIED".equalsIgnoreCase(status)
+                || "AUTH_FAILED".equalsIgnoreCase(status)) explicitFailure = true;
+        if (explicitFailure) {
+            stopHeartbeat();
+            authenticatedAt = 0L;
+            String backendMessage = payload == null ? "" : payload.optString("msg", payload.optString("message", ""));
+            if (backendMessage.isEmpty() && data != null) backendMessage = data.optString("msg", data.optString("message", ""));
+            updateState("AUTH_FAILED", backendMessage.isEmpty() ? "后台拒绝设备登录" : backendMessage, null);
+            return;
+        }
+        authenticatedAt = System.currentTimeMillis();
+        updateState("AUTHENTICATED", "后台业务登录认证成功", null);
+        startHeartbeat();
+    }
+
+    private synchronized boolean isTransportConnected() {
+        if (MODE_TCP.equals(transportMode)) return tcpSocket != null && !tcpSocket.isClosed();
+        return mqttClient != null && mqttClient.isConnected();
     }
 
     private void sendLogin() throws Exception {
         send(new JSONObject()
                 .put("cmd", "login")
                 .put("data", new JSONObject()
-                        .put("version", "1.0.0")
+                        .put("version", BuildConfig.VERSION_NAME)
                         .put("ip", "127.0.0.1")));
+    }
+
+    private synchronized void startLoginTimeout() {
+        cancelLoginTimeout();
+        final long generation = ++loginAttemptGeneration;
+        loginTimeoutTask = heartbeatExecutor.schedule(() -> {
+            if (!markLoginTimeout(generation)) return;
+            closeTransports();
+            scheduleReconnect();
+        }, LOGIN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private boolean markLoginTimeout(long generation) {
+        synchronized (this) {
+            if (generation != loginAttemptGeneration || !running || !"LOGIN_SENT".equals(state)) return false;
+            loginAttemptGeneration++;
+            authenticatedAt = 0L;
+            state = "AUTH_TIMEOUT";
+            message = "后台登录响应超时";
+            lastError = "";
+        }
+        notifyStatus();
+        return true;
+    }
+
+    private synchronized void cancelLoginTimeout() {
+        loginAttemptGeneration++;
+        if (loginTimeoutTask != null) {
+            loginTimeoutTask.cancel(false);
+            loginTimeoutTask = null;
+        }
     }
 
     private void startHeartbeat() {
         stopHeartbeat();
-        heartbeatTask = executor.scheduleAtFixedRate(() -> {
+        heartbeatTask = heartbeatExecutor.scheduleAtFixedRate(() -> {
             try {
                 send(new JSONObject()
                         .put("cmd", "heartbeat")
@@ -423,6 +531,7 @@ public class WebSocketConnectionManager {
         try { if (tcpSocket != null) tcpSocket.close(); } catch (Exception ignored) { }
         tcpOutput = null;
         tcpSocket = null;
+        authenticatedAt = 0L;
     }
 
     private void closeMqttQuietly(MqttAsyncClient currentMqtt) {
@@ -577,7 +686,7 @@ public class WebSocketConnectionManager {
         command.put("cmd", envelope.optString("cmd", command.optString("cmd", "")));
         command.put("msgId", envelope.optString("msgId", command.optString("msgId", "")));
         command.put("timestamp", envelope.optLong("timestamp", command.optLong("timestamp", 0L)));
-        command.put("deviceCode", envelope.optString("deviceCode", deviceCode));
+        command.put("deviceCode", envelope.optString("deviceCode", command.optString("deviceCode", "")));
         command.put("_source", envelope.optString("_source", ""));
         command.put("_envelope", envelope);
         return command;

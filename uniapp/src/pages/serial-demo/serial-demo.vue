@@ -129,8 +129,8 @@ const statusClass = computed(() => {
   return 'disconnected'
 })
 const backendStatusClass = computed(() => {
-  if (backendStatus.state === 'CONNECTED') return 'connected'
-  if (backendStatus.state === 'CONNECTING') return 'connecting'
+  if (backendStatus.state === 'AUTHENTICATED') return 'connected'
+  if (['CONNECTING', 'TRANSPORT_CONNECTED', 'SUBSCRIBED', 'LOGIN_SENT'].includes(backendStatus.state)) return 'connecting'
   return 'disconnected'
 })
 const backendMode = computed(() => String(appState.settings.backendTransport || 'MQTT').toUpperCase())

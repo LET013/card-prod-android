@@ -1,8 +1,7 @@
 package com.xingyao.card;
 
 import android.util.Log;
-import android.webkit.JavascriptInterface;
-
+import com.xingyao.card.core.NativeActionPolicy;
 import com.xingyao.card.core.NativeAuthManager;
 import com.xingyao.card.core.NativeSettingsRepository;
 import com.xingyao.card.service.DeviceCoreService;
@@ -22,18 +21,45 @@ public class JsBridge {
         this.settingsRepository = new NativeSettingsRepository(activity);
     }
 
-    @JavascriptInterface
-    public void postMessage(String rawMessage) {
+    /** Called only by WebViewCompat.WebMessageListener after exact origin and main-frame validation. */
+    public void handleTrustedMessage(String rawMessage) {
+        dispatch(rawMessage);
+    }
+
+    private void dispatch(String rawMessage) {
+        String requestId = "";
         try {
             JSONObject request = new JSONObject(rawMessage == null ? "{}" : rawMessage);
-            String requestId = request.optString("requestId", "");
-            String action = request.optString("action", "");
+            requestId = request.optString("requestId", "");
+            String action = request.optString("action", "").trim();
             JSONObject payload = request.optJSONObject("payload");
             if (payload == null) payload = new JSONObject();
+            if (action.isEmpty()) {
+                sendError(requestId, "ACTION_REQUIRED", "原生请求缺少action");
+                return;
+            }
+            if (!NativeActionPolicy.isKnownAction(action)) {
+                sendError(requestId, "NOT_IMPLEMENTED", "NOT_IMPLEMENTED: Android原生层未注册该动作");
+                return;
+            }
+            boolean bootstrapSettingsSave = "settings.save".equals(action) && !settingsRepository.isInitialized();
+            String permission = bootstrapSettingsSave ? null : NativeActionPolicy.requiredPermission(action);
+            String authorizationError = authManager.authorize(permission);
+            if (authorizationError != null) {
+                String message = NativeAuthManager.AUTH_REQUIRED.equals(authorizationError)
+                        ? "管理员会话不存在或已过期，请重新验证密码"
+                        : "当前管理员角色无权执行该操作：" + permission;
+                sendError(requestId, authorizationError, message);
+                DeviceCoreService.recordOperation("security.bridge.denied", new JSONObject()
+                        .put("action", action)
+                        .put("permission", permission)
+                        .put("code", authorizationError));
+                return;
+            }
             handleRequest(requestId, action, payload);
         } catch (Exception error) {
             Log.e(TAG, "Invalid bridge request", error);
-            sendError("", "INVALID_REQUEST", error.getMessage());
+            sendError(requestId, "INVALID_REQUEST", safeMessage(error));
         }
     }
 
@@ -43,18 +69,21 @@ public class JsBridge {
                 sendSuccess(requestId, new JSONObject()
                         .put("native", true)
                         .put("platform", "android")
-                        .put("bridgeVersion", 1));
+                        .put("bridgeVersion", 2)
+                        .put("originScoped", activity.isOriginScopedBridgeEnabled()));
                 activity.sendBridgeEvent("native.ready", new JSONObject().put("ready", true));
                 break;
             case "settings.load":
-                sendSuccess(requestId, settingsRepository.load());
+                sendSuccess(requestId, settingsRepository.loadForUi());
                 break;
-            case "settings.save":
-                JSONObject savedSettings = settingsRepository.save(payload);
-                DeviceCoreService.configureSerial(savedSettings);
-                DeviceCoreService.recordOperation("settings.saved", savedSettings);
+            case "settings.save": {
+                boolean bootstrap = !settingsRepository.isInitialized();
+                JSONObject savedSettings = settingsRepository.saveFromUi(payload);
+                DeviceCoreService.configureSerial(settingsRepository.load());
+                DeviceCoreService.recordOperation(bootstrap ? "settings.bootstrap.saved" : "settings.saved", savedSettings);
                 sendSuccess(requestId, savedSettings);
                 break;
+            }
             case "auth.login": {
                 JSONObject session = authManager.login(payload.optString("password", ""));
                 if (session == null) sendError(requestId, "AUTH_FAILED", "密码错误");
@@ -92,49 +121,52 @@ public class JsBridge {
                     sendSuccess(requestId, DeviceCoreService.sendSerial(
                             payload.optString("data", ""), payload.optString("encoding", "TEXT")));
                 } catch (Exception error) {
-                    sendError(requestId, "SERIAL_SEND_FAILED", error.getMessage());
+                    sendError(requestId, "SERIAL_SEND_FAILED", safeMessage(error));
                 }
                 break;
             case "cabinet.unlockDoor":
                 try {
-                    sendSuccess(requestId, DeviceCoreService.openDoor(payload.optInt("slotNumber", -1), true, "TAKE", "ADMIN"));
+                    sendSuccess(requestId, DeviceCoreService.openDoor(payload.optInt("slotNumber", -1), true,
+                            "TAKE", "ADMIN", requestId, "UI"));
                 } catch (Exception error) {
-                    sendError(requestId, "DOOR_OPEN_FAILED", error.getMessage());
+                    sendError(requestId, "DOOR_OPEN_FAILED", safeMessage(error));
                 }
                 break;
             case "cabinet.takeCard":
                 try {
-                    sendSuccess(requestId, DeviceCoreService.openDoor(payload.optInt("slotNumber", -1), false, "TAKE", "FACE"));
+                    sendSuccess(requestId, DeviceCoreService.openDoor(payload.optInt("slotNumber", -1), false,
+                            "TAKE", "FACE", requestId, "UI"));
                 } catch (Exception error) {
-                    sendError(requestId, "DOOR_OPEN_FAILED", error.getMessage());
+                    sendError(requestId, "DOOR_OPEN_FAILED", safeMessage(error));
                 }
                 break;
             case "cabinet.returnCard":
                 try {
-                    sendSuccess(requestId, DeviceCoreService.openDoor(payload.optInt("slotNumber", -1), true, "RETURN", "ADMIN"));
+                    sendSuccess(requestId, DeviceCoreService.openDoor(payload.optInt("slotNumber", -1), true,
+                            "RETURN", "ADMIN", requestId, "UI"));
                 } catch (Exception error) {
-                    sendError(requestId, "DOOR_OPEN_FAILED", error.getMessage());
+                    sendError(requestId, "DOOR_OPEN_FAILED", safeMessage(error));
                 }
                 break;
             case "cabinet.querySlot":
                 try {
                     sendSuccess(requestId, DeviceCoreService.querySlot(payload.optInt("slotNumber", -1)));
                 } catch (Exception error) {
-                    sendError(requestId, "SLOT_QUERY_FAILED", error.getMessage());
+                    sendError(requestId, "SLOT_QUERY_FAILED", safeMessage(error));
                 }
                 break;
             case "cabinet.readVersion":
                 try {
                     sendSuccess(requestId, DeviceCoreService.readBoardVersion(payload.optInt("slotNumber", -1)));
                 } catch (Exception error) {
-                    sendError(requestId, "VERSION_READ_FAILED", error.getMessage());
+                    sendError(requestId, "VERSION_READ_FAILED", safeMessage(error));
                 }
                 break;
             case "cabinet.unlockAll":
                 try {
-                    sendSuccess(requestId, DeviceCoreService.openAllDoors(true));
+                    sendSuccess(requestId, DeviceCoreService.openAllDoors(true, requestId, "UI"));
                 } catch (Exception error) {
-                    sendError(requestId, "DOOR_OPEN_ALL_FAILED", error.getMessage());
+                    sendError(requestId, "DOOR_OPEN_ALL_FAILED", safeMessage(error));
                 }
                 break;
             case "cabinet.getSlots":
@@ -181,7 +213,7 @@ public class JsBridge {
                 activity.scheduleRecreate();
                 break;
             default:
-                sendError(requestId, "NOT_IMPLEMENTED", "NOT_IMPLEMENTED: 当前阶段由Web端Mock实现，后续在Android原生层接入");
+                sendError(requestId, "NOT_IMPLEMENTED", "NOT_IMPLEMENTED: Android原生层未注册该动作");
                 break;
         }
     }
@@ -213,10 +245,9 @@ public class JsBridge {
         }
     }
 
-    @JavascriptInterface public void log(String message) { Log.d(TAG, message); }
-    @JavascriptInterface public void logInfo(String message) { Log.i(TAG, message); }
-    @JavascriptInterface public void logWarn(String message) { Log.w(TAG, message); }
-    @JavascriptInterface public void logError(String message) { Log.e(TAG, message); }
-    @JavascriptInterface public void logVerbose(String message) { Log.v(TAG, message); }
-    @JavascriptInterface public void logDebug(String tag, String message) { Log.d(tag, message); }
+    private static String safeMessage(Throwable error) {
+        if (error == null) return "unknown";
+        String value = error.getMessage();
+        return value == null || value.trim().isEmpty() ? error.getClass().getSimpleName() : value;
+    }
 }

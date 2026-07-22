@@ -19,8 +19,12 @@ function installReceiver() {
       if (!item) return
       clearTimeout(item.timer)
       pending.delete(data.requestId)
-      if (data.success === false) item.reject(new Error(data.message || data.code || 'Native request failed'))
-      else item.resolve(data.data)
+      if (data.success === false) {
+        const error = new Error(data.message || data.code || 'Native request failed')
+        error.code = data.code || 'NATIVE_REQUEST_FAILED'
+        error.requestId = data.requestId
+        item.reject(error)
+      } else item.resolve(data.data)
       return
     }
     if (data.type === 'event' && data.event) {

@@ -11,16 +11,25 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 public class NativeAuthManager {
+    public static final String AUTH_REQUIRED = "AUTH_REQUIRED";
+    public static final String PERMISSION_DENIED = "PERMISSION_DENIED";
+
     private static final String PREFS = "card_native_auth";
     private static final String ROLE_SYSTEM_ADMIN = "SYSTEM_ADMIN";
     private static final String ROLE_OPS = "OPS";
     private static final String ROLE_DEVELOPER = "DEVELOPER";
+    private static final long SESSION_TTL_MS = 60L * 60L * 1000L;
 
     private final SharedPreferences preferences;
     private String currentRole;
+    private String currentSessionId;
+    private long loginAt;
+    private long lastActivityAt;
 
     public NativeAuthManager(Context context) {
         preferences = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -41,31 +50,48 @@ public class NativeAuthManager {
         editor.apply();
     }
 
-    public JSONObject login(String password) throws JSONException {
+    public synchronized JSONObject login(String password) throws JSONException {
         String passwordHash = sha256(password == null ? "" : password);
         for (String role : new String[]{ROLE_SYSTEM_ADMIN, ROLE_OPS, ROLE_DEVELOPER}) {
             if (passwordHash.equals(preferences.getString(role, ""))) {
+                long now = System.currentTimeMillis();
                 currentRole = role;
-                JSONObject result = new JSONObject();
-                result.put("role", role);
-                result.put("permissions", permissionsFor(role));
-                result.put("loginAt", System.currentTimeMillis());
-                return result;
+                currentSessionId = "NS-" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.US);
+                loginAt = now;
+                lastActivityAt = now;
+                return sessionSnapshotLocked();
             }
         }
         return null;
     }
 
-    public void logout() {
-        currentRole = null;
+    public synchronized void logout() {
+        clearSessionLocked();
     }
 
-    public String getCurrentRole() {
-        return currentRole;
+    public synchronized String getCurrentRole() {
+        return isSessionActiveLocked() ? currentRole : null;
     }
 
-    public boolean changePassword(String role, String password) {
-        if (!ROLE_SYSTEM_ADMIN.equals(currentRole)) {
+    /**
+     * Returns null when access is allowed, AUTH_REQUIRED when no active native
+     * session exists, or PERMISSION_DENIED when the role lacks the permission.
+     */
+    public synchronized String authorize(String permission) {
+        if (permission == null || permission.trim().isEmpty()) return null;
+        if (!isSessionActiveLocked()) return AUTH_REQUIRED;
+        if (!hasPermissionLocked(currentRole, permission)) return PERMISSION_DENIED;
+        lastActivityAt = System.currentTimeMillis();
+        return null;
+    }
+
+    public synchronized JSONObject sessionSnapshot() throws JSONException {
+        if (!isSessionActiveLocked()) return new JSONObject().put("authenticated", false);
+        return sessionSnapshotLocked();
+    }
+
+    public synchronized boolean changePassword(String role, String password) {
+        if (!isSessionActiveLocked() || !hasPermissionLocked(currentRole, "auth.password.manage")) {
             return false;
         }
         if (role == null || password == null || !password.matches("\\d{6}")) {
@@ -74,11 +100,55 @@ public class NativeAuthManager {
         if (!ROLE_SYSTEM_ADMIN.equals(role) && !ROLE_OPS.equals(role) && !ROLE_DEVELOPER.equals(role)) {
             return false;
         }
-        preferences.edit().putString(role, sha256(password)).apply();
-        return true;
+        lastActivityAt = System.currentTimeMillis();
+        return preferences.edit().putString(role, sha256(password)).commit();
+    }
+
+    private JSONObject sessionSnapshotLocked() throws JSONException {
+        return new JSONObject()
+                .put("authenticated", true)
+                .put("sessionId", currentSessionId)
+                .put("role", currentRole)
+                .put("permissions", permissionsFor(currentRole))
+                .put("loginAt", loginAt)
+                .put("lastActivityAt", lastActivityAt)
+                .put("expiresAt", lastActivityAt + SESSION_TTL_MS);
+    }
+
+    private boolean isSessionActiveLocked() {
+        if (currentRole == null || currentSessionId == null) return false;
+        long now = System.currentTimeMillis();
+        if (now - lastActivityAt <= SESSION_TTL_MS) return true;
+        clearSessionLocked();
+        return false;
+    }
+
+    private void clearSessionLocked() {
+        currentRole = null;
+        currentSessionId = null;
+        loginAt = 0L;
+        lastActivityAt = 0L;
+    }
+
+    private boolean hasPermissionLocked(String role, String permission) {
+        String[] permissions = permissionMap().get(role);
+        if (permissions == null) return false;
+        for (String candidate : permissions) {
+            if (candidate.equals(permission)) return true;
+        }
+        return false;
     }
 
     private JSONArray permissionsFor(String role) {
+        JSONArray array = new JSONArray();
+        String[] list = permissionMap().get(role);
+        if (list != null) {
+            for (String permission : list) array.put(permission);
+        }
+        return array;
+    }
+
+    private Map<String, String[]> permissionMap() {
         Map<String, String[]> permissions = new LinkedHashMap<>();
         permissions.put(ROLE_SYSTEM_ADMIN, new String[]{
                 "system.menu", "management.menu", "cabinet.view", "cabinet.unlock", "cabinet.unlockAll",
@@ -95,12 +165,7 @@ public class NativeAuthManager {
                 "engine.activate", "authorization.manage", "upgrade.app", "upgrade.firmware",
                 "debug.command", "app.restart"
         });
-        JSONArray array = new JSONArray();
-        String[] list = permissions.get(role);
-        if (list != null) {
-            for (String permission : list) array.put(permission);
-        }
-        return array;
+        return permissions;
     }
 
     private String sha256(String value) {

@@ -18,6 +18,8 @@ import com.xingyao.card.core.BackendHttpClient;
 import com.xingyao.card.core.DeviceDataRepository;
 import com.xingyao.card.core.DeviceDataSyncManager;
 import com.xingyao.card.core.DeviceEventLogRepository;
+import com.xingyao.card.core.DeviceOperationEngine;
+import com.xingyao.card.core.InboundCommandRepository;
 import com.xingyao.card.core.NativeSettingsRepository;
 import com.xingyao.card.core.SerialConnectionManager;
 import com.xingyao.card.core.SlotStateRepository;
@@ -30,7 +32,9 @@ import org.json.JSONObject;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -51,7 +55,10 @@ public class DeviceCoreService extends Service {
     private DeviceEventLogRepository eventLogRepository;
     private DeviceDataRepository dataRepository;
     private DeviceDataSyncManager dataSyncManager;
+    private DeviceOperationEngine operationEngine;
+    private InboundCommandRepository inboundCommandRepository;
     private final SlotStateRepository slotRepository = new SlotStateRepository();
+    private final ExecutorService backendCommandExecutor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService slotReportExecutor = Executors.newSingleThreadScheduledExecutor();
     private ScheduledFuture<?> slotReportTask;
     private volatile boolean startupDataSyncRunning;
@@ -72,7 +79,10 @@ public class DeviceCoreService extends Service {
         dataSyncManager = new DeviceDataSyncManager(this, settingsRepository, dataRepository, arcFaceManager);
         webSocketManager = new WebSocketConnectionManager(this, settingsRepository, new WebSocketConnectionManager.Listener() {
             @Override public void onStatusChanged(JSONObject status) { handleBackendStatusChanged(status); }
-            @Override public void onCommand(JSONObject command) { handleSocketCommand(command); }
+            @Override public void onCommand(JSONObject command) {
+                try { backendCommandExecutor.execute(() -> handleSocketCommand(command)); }
+                catch (RejectedExecutionException ignored) { }
+            }
             @Override public void onMessage(JSONObject message) { recordAndPublish("socket.message", "socket.message", message); }
         });
         serialManager = new SerialConnectionManager(this, new SerialConnectionManager.Listener() {
@@ -86,6 +96,16 @@ public class DeviceCoreService extends Service {
                 }
             }
         });
+        inboundCommandRepository = new InboundCommandRepository(this);
+        operationEngine = new DeviceOperationEngine(new DeviceOperationEngine.SerialGateway() {
+            @Override public JSONObject openDoor(int slotNumber, boolean administrator) throws Exception {
+                return serialManager.openDoor(slotNumber, administrator);
+            }
+
+            @Override public JSONObject openAllDoors(boolean administrator) throws Exception {
+                return serialManager.openAllDoors(administrator);
+            }
+        }, this::record);
         createNotificationChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
         webSocketManager.start();
@@ -110,6 +130,7 @@ public class DeviceCoreService extends Service {
         webSocketManager.stop();
         serialManager.stop();
         stopSlotStatusReporter();
+        backendCommandExecutor.shutdownNow();
         slotReportExecutor.shutdownNow();
         if (arcFaceManager != null) arcFaceManager.stop();
         instance = null;
@@ -174,14 +195,22 @@ public class DeviceCoreService extends Service {
     }
 
     public static JSONObject openDoor(int slotNumber, boolean administrator) throws Exception {
-        return openDoor(slotNumber, administrator, "TAKE", administrator ? "ADMIN" : "FACE");
+        return openDoor(slotNumber, administrator, "TAKE", administrator ? "ADMIN" : "FACE", "",
+                administrator ? "ADMIN" : "FACE");
     }
 
     public static JSONObject openDoor(int slotNumber, boolean administrator, String eventType, String authType) throws Exception {
-        if (instance == null || instance.serialManager == null) throw new IllegalStateException("原生设备服务未启动");
-        JSONObject result = instance.serialManager.openDoor(slotNumber, administrator);
+        return openDoor(slotNumber, administrator, eventType, authType, "",
+                administrator ? "ADMIN" : "FACE");
+    }
+
+    public static JSONObject openDoor(int slotNumber, boolean administrator, String eventType, String authType,
+                                      String requestMsgId, String source) throws Exception {
+        if (instance == null || instance.operationEngine == null) throw new IllegalStateException("原生设备服务未启动");
+        JSONObject result = instance.operationEngine.openDoor(slotNumber, administrator, source, requestMsgId, "");
         instance.record("cabinet.door.open", result);
-        instance.sendCardEvent(slotNumber, eventType, authType);
+        instance.sendCardEvent(slotNumber, eventType, authType, result.optString("operationId", ""),
+                requestMsgId, "");
         return result;
     }
 
@@ -200,8 +229,12 @@ public class DeviceCoreService extends Service {
     }
 
     public static JSONObject openAllDoors(boolean administrator) throws Exception {
-        if (instance == null || instance.serialManager == null) throw new IllegalStateException("原生设备服务未启动");
-        JSONObject result = instance.serialManager.openAllDoors(administrator);
+        return openAllDoors(administrator, "", administrator ? "ADMIN" : "UI");
+    }
+
+    public static JSONObject openAllDoors(boolean administrator, String requestMsgId, String source) throws Exception {
+        if (instance == null || instance.operationEngine == null) throw new IllegalStateException("原生设备服务未启动");
+        JSONObject result = instance.operationEngine.openAllDoors(administrator, source, requestMsgId);
         instance.record("cabinet.door.openAll", result);
         return result;
     }
@@ -231,10 +264,19 @@ public class DeviceCoreService extends Service {
         JSONObject result = instance.arcFaceManager.verifyNv21(frame, width, height);
         if (result.optBoolean("success", false)) {
             int slotNumber = instance.pickTakeSlot();
+            if (slotNumber < 1) {
+                result.put("doorOpen", false).put("status", "NO_AVAILABLE_CARD")
+                        .put("message", "人脸识别成功，但当前没有可取卡槽");
+                instance.record("biometric.face.noAvailableCard", result);
+                return result;
+            }
+            String employeeId = result.optString("employeeId", "");
             try {
-                JSONObject door = instance.serialManager.openDoor(slotNumber, false);
-                result.put("slotNumber", slotNumber).put("doorOpen", true).put("door", door);
-                instance.sendCardEvent(slotNumber, "TAKE", "FACE");
+                JSONObject door = instance.operationEngine.openDoor(slotNumber, false, "FACE", "", employeeId);
+                result.put("slotNumber", slotNumber).put("doorOpen", true).put("door", door)
+                        .put("operationId", door.optString("operationId", ""));
+                instance.sendCardEvent(slotNumber, "TAKE", "FACE", door.optString("operationId", ""),
+                        "", employeeId);
             } catch (Exception error) {
                 result.put("slotNumber", slotNumber).put("doorOpen", false).put("doorError", error.getMessage());
                 throw new IllegalStateException("人脸识别成功，但开门失败：" + error.getMessage());
@@ -270,7 +312,7 @@ public class DeviceCoreService extends Service {
 
     private void handleBackendStatusChanged(JSONObject status) {
         recordAndPublish("socket.status", "socket.statusChanged", status);
-        if (status != null && "CONNECTED".equals(status.optString("state"))) {
+        if (status != null && "AUTHENTICATED".equals(status.optString("state"))) {
             runStartupDataSyncIfNeeded();
         }
     }
@@ -316,38 +358,100 @@ public class DeviceCoreService extends Service {
 
     private void handleSocketCommand(JSONObject command) {
         recordAndPublish("socket.command", "socket.command", command);
-        String cmd = command.optString("cmd", "");
+        String cmd = command == null ? "" : command.optString("cmd", "").trim();
+        if (inboundCommandRepository == null) {
+            record("socket.command.rejected", new JSONObject());
+            return;
+        }
+        InboundCommandRepository.BeginResult begin = inboundCommandRepository.begin(command, currentDeviceCode());
+        if (InboundCommandRepository.STATUS_DUPLICATE_COMPLETED.equals(begin.status)) {
+            JSONObject cached = begin.response == null ? baseCommandResponse(command, cmd + "Resp") : begin.response;
+            try {
+                cached.put("duplicate", true).put("replayed", true);
+                sendSocket(cached);
+                record("socket.command.replayed", cached);
+            } catch (Exception error) {
+                recordCommandSendFailure(cached, error);
+            }
+            return;
+        }
+        if (InboundCommandRepository.STATUS_DUPLICATE_PROCESSING.equals(begin.status)) {
+            JSONObject processing = baseCommandResponse(command, cmd + "Resp");
+            try {
+                processing.put("code", 202).put("status", "PROCESSING")
+                        .put("msg", "相同指令正在处理中").put("duplicate", true);
+                sendSocket(processing);
+            } catch (Exception error) {
+                recordCommandSendFailure(processing, error);
+            }
+            return;
+        }
+        if (InboundCommandRepository.STATUS_REJECTED.equals(begin.status)) {
+            JSONObject rejected = baseCommandResponse(command, cmd.isEmpty() ? "commandResp" : cmd + "Resp");
+            try {
+                rejected.put("code", 4001).put("status", "REJECTED")
+                        .put("errorCode", begin.code).put("msg", begin.message);
+                sendSocket(rejected);
+                record("security.command.rejected", rejected);
+            } catch (Exception error) {
+                recordCommandSendFailure(rejected, error);
+            }
+            return;
+        }
+
         try {
             if ("remoteOpen".equals(cmd)) handleRemoteOpen(command);
             else if ("remoteEjectAll".equals(cmd)) handleRemoteEjectAll(command);
             else if ("queryStatus".equals(cmd)) handleQueryStatus(command);
             else if ("syncUser".equals(cmd)) handleSyncUser(command);
             else if ("syncEmployeeData".equals(cmd) || "syncFaceData".equals(cmd) || "syncFingerData".equals(cmd)) handleDataSyncCommand(command);
-            else if ("syncConfig".equals(cmd)) handleSyncConfig();
+            else if ("syncConfig".equals(cmd)) handleSyncConfig(command);
             else if ("firmwareUpgrade".equals(cmd)) handleFirmwareUpgrade(command);
             else if ("cancelUpgrade".equals(cmd)) handleCancelUpgrade(command);
             else if ("deviceSelfCheck".equals(cmd)) handleDeviceSelfCheck(command);
             else if ("enableLogUpload".equals(cmd) || "disableLogUpload".equals(cmd)) handleLogUploadToggle(command);
             else if ("restartApp".equals(cmd)) handleRestartApp(command);
-            else sendSocket(new JSONObject().put("cmd", cmd + "Resp").put("code", 9000).put("msg", "unsupported command"));
+            else completeCommand(command, baseCommandResponse(command, cmd + "Resp")
+                    .put("code", 9000).put("status", "UNSUPPORTED")
+                    .put("msg", "unsupported command"), false);
         } catch (Exception error) {
             try {
-                sendSocket(new JSONObject().put("cmd", cmd + "Resp").put("code", 9000).put("msg", error.getMessage()));
+                JSONObject response = baseCommandResponse(command, cmd.isEmpty() ? "commandResp" : cmd + "Resp")
+                        .put("code", 9000).put("status", "FAILED")
+                        .put("msg", safeMessage(error));
+                if (error instanceof DeviceOperationEngine.OperationException) {
+                    DeviceOperationEngine.OperationException operationError = (DeviceOperationEngine.OperationException) error;
+                    response.put("operationId", operationError.getOperationId())
+                            .put("errorCode", operationError.getFailureCode());
+                }
+                completeCommand(command, response, false);
             } catch (Exception ignored) { }
         }
     }
 
     private void handleRemoteOpen(JSONObject command) throws Exception {
         int slotId = command.optInt("slotId", -1);
-        JSONObject response = new JSONObject().put("cmd", "remoteOpenResp").put("slotId", slotId);
+        String requestMsgId = command.optString("msgId", "");
+        JSONObject response = baseCommandResponse(command, "remoteOpenResp").put("slotId", slotId);
         try {
-            serialManager.openDoor(slotId, true);
-            response.put("code", 0).put("status", "OPENED");
-            sendCardEvent(slotId, "TAKE", command.optString("authType", "REMOTE"));
+            JSONObject result = operationEngine.openDoor(slotId, true, "MQTT", requestMsgId, "");
+            String operationId = result.optString("operationId", "");
+            response.put("code", 0).put("status", "BOARD_ACKED")
+                    .put("operationId", operationId)
+                    .put("physicalConfirmationRequired", true)
+                    .put("result", result);
+            sendCardEvent(slotId, "TAKE", command.optString("authType", "REMOTE"), operationId,
+                    requestMsgId, command.optString("employeeId", ""));
+            completeCommand(command, response, true);
         } catch (Exception error) {
-            response.put("code", 4003).put("status", "FAILED").put("msg", error.getMessage());
+            response.put("code", 4003).put("status", "FAILED").put("msg", safeMessage(error));
+            if (error instanceof DeviceOperationEngine.OperationException) {
+                DeviceOperationEngine.OperationException operationError = (DeviceOperationEngine.OperationException) error;
+                response.put("operationId", operationError.getOperationId())
+                        .put("errorCode", operationError.getFailureCode());
+            }
+            completeCommand(command, response, false);
         }
-        sendSocket(response);
     }
 
     private void handleSyncUser(JSONObject command) throws JSONException {
@@ -360,9 +464,9 @@ public class DeviceCoreService extends Service {
             try {
                 JSONObject result = dataSyncManager.syncAll(command);
                 JSONObject responseData = BackendHttpClient.copyWithout(result, "snapshot");
-                sendSocket(new JSONObject()
-                        .put("cmd", "syncUserResp")
-                        .put("data", responseData));
+                JSONObject response = baseCommandResponse(command, "syncUserResp")
+                        .put("code", 0).put("status", "SUCCESS").put("data", responseData);
+                completeCommand(command, response, true);
                 JSONObject event = new JSONObject(responseData.toString())
                         .put("state", "SUCCESS")
                         .put("message", "同步完成")
@@ -370,15 +474,12 @@ public class DeviceCoreService extends Service {
                 recordAndPublish("sync.user.success", "sync.completed", event);
             } catch (Exception error) {
                 try {
-                    sendSocket(new JSONObject()
-                            .put("cmd", "syncUserResp")
-                            .put("data", new JSONObject()
-                                    .put("code", 9000)
-                                    .put("msg", error.getMessage())));
+                    completeCommand(command, baseCommandResponse(command, "syncUserResp")
+                            .put("code", 9000).put("status", "FAILED")
+                            .put("msg", safeMessage(error)), false);
                     recordAndPublish("sync.user.failed", "sync.statusChanged", new JSONObject()
-                            .put("state", "ERROR")
-                            .put("cmd", "syncUser")
-                            .put("message", error.getMessage()));
+                            .put("state", "ERROR").put("cmd", "syncUser")
+                            .put("message", safeMessage(error)));
                 } catch (Exception ignored) { }
             }
         }, "sync-user").start();
@@ -398,9 +499,8 @@ public class DeviceCoreService extends Service {
                 else if ("syncFaceData".equals(cmd)) result = dataSyncManager.syncFaces(command);
                 else result = dataSyncManager.syncFingers(command);
                 JSONObject responseData = BackendHttpClient.copyWithout(result, "snapshot");
-                sendSocket(new JSONObject()
-                        .put("cmd", cmd + "Resp")
-                        .put("data", responseData));
+                completeCommand(command, baseCommandResponse(command, cmd + "Resp")
+                        .put("code", 0).put("status", "SUCCESS").put("data", responseData), true);
                 JSONObject event = new JSONObject(responseData.toString())
                         .put("state", "SUCCESS")
                         .put("cmd", cmd)
@@ -409,79 +509,74 @@ public class DeviceCoreService extends Service {
                 recordAndPublish("sync.data.success", "sync.completed", event);
             } catch (Exception error) {
                 try {
-                    sendSocket(new JSONObject()
-                            .put("cmd", cmd + "Resp")
-                            .put("data", new JSONObject()
-                                    .put("code", 9000)
-                                    .put("msg", error.getMessage())));
+                    completeCommand(command, baseCommandResponse(command, cmd + "Resp")
+                            .put("code", 9000).put("status", "FAILED")
+                            .put("msg", safeMessage(error)), false);
                     recordAndPublish("sync.data.failed", "sync.statusChanged", new JSONObject()
-                            .put("state", "ERROR")
-                            .put("cmd", cmd)
-                            .put("message", error.getMessage()));
+                            .put("state", "ERROR").put("cmd", cmd)
+                            .put("message", safeMessage(error)));
                 } catch (Exception ignored) { }
             }
         }, "sync-data").start();
     }
 
     private void handleRemoteEjectAll(JSONObject command) throws Exception {
-        JSONObject response = new JSONObject().put("cmd", "remoteEjectAllResp");
+        JSONObject response = baseCommandResponse(command, "remoteEjectAllResp");
         if (!command.optBoolean("confirm", false)) {
-            sendSocket(response.put("code", 9000).put("msg", "confirm required").put("ejectedCount", 0));
+            completeCommand(command, response.put("code", 4001).put("status", "REJECTED")
+                    .put("msg", "confirm required").put("ejectedCount", 0), false);
             return;
         }
         try {
-            JSONObject result = serialManager.openAllDoors(true);
+            JSONObject result = operationEngine.openAllDoors(true, "MQTT", command.optString("msgId", ""));
             int successCount = result.optInt("successCount", 0);
             int failedCount = result.optInt("failedCount", 0);
-            sendSocket(response
-                    .put("code", failedCount == 0 ? 0 : 4001)
+            response.put("code", failedCount == 0 ? 0 : 4001)
+                    .put("status", failedCount == 0 ? "BOARD_ACKED" : successCount > 0 ? "PARTIAL" : "FAILED")
                     .put("msg", failedCount == 0 ? "success" : "部分或全部单板未应答")
+                    .put("operationId", result.optString("operationId", ""))
+                    .put("physicalConfirmationRequired", successCount > 0)
                     .put("ejectedCount", successCount)
                     .put("failedCount", failedCount)
-                    .put("failures", result.optJSONArray("failures")));
+                    .put("failures", result.optJSONArray("failures"));
+            completeCommand(command, response, failedCount == 0);
         } catch (Exception error) {
-            sendSocket(response.put("code", 4003).put("msg", error.getMessage()).put("ejectedCount", 0));
+            response.put("code", 4003).put("status", "FAILED")
+                    .put("msg", safeMessage(error)).put("ejectedCount", 0);
+            if (error instanceof DeviceOperationEngine.OperationException) {
+                response.put("operationId", ((DeviceOperationEngine.OperationException) error).getOperationId());
+            }
+            completeCommand(command, response, false);
         }
     }
 
     private void handleQueryStatus(JSONObject command) throws Exception {
         int slotId = command.optInt("slotId", -1);
         JSONArray data = slotRepository.snapshotBackendSlots(slotId);
-        sendSocket(new JSONObject().put("cmd", "statusResp").put("data", data));
+        completeCommand(command, baseCommandResponse(command, "statusResp")
+                .put("code", 0).put("status", "SUCCESS").put("data", data), true);
     }
 
-    private void handleSyncConfig() throws Exception {
-        JSONObject settings = new com.xingyao.card.core.NativeSettingsRepository(this).load();
-        sendSocket(new JSONObject().put("cmd", "syncConfigResp").put("code", 0).put("msg", "accepted")
-                .put("deviceCode", currentDeviceCode()).put("configUpdatedAt", settings.optLong("provisionedAt", 0L)));
+    private void handleSyncConfig(JSONObject command) throws Exception {
+        JSONObject settings = new NativeSettingsRepository(this).load();
+        completeCommand(command, baseCommandResponse(command, "syncConfigResp")
+                .put("code", 0).put("status", "SUCCESS").put("msg", "accepted")
+                .put("deviceCode", currentDeviceCode())
+                .put("configUpdatedAt", settings.optLong("provisionedAt", 0L)), true);
     }
 
     private void handleFirmwareUpgrade(JSONObject command) throws Exception {
-        JSONObject response = new JSONObject()
-                .put("cmd", "firmwareUpgradeResp")
-                .put("code", 0)
-                .put("msg", "accepted")
+        completeCommand(command, baseCommandResponse(command, "firmwareUpgradeResp")
+                .put("code", 501).put("status", "NOT_SUPPORTED")
+                .put("msg", "当前版本尚未实现固件下载安装，不会伪报accepted")
                 .put("firmwareVersion", command.optString("firmwareVersion", command.optString("version", "")))
-                .put("downloadUrl", absoluteBackendUrl(command.optString("downloadUrl", "")));
-        sendSocket(response);
-        JSONObject status = new JSONObject()
-                .put("firmwareVersion", response.optString("firmwareVersion", ""))
-                .put("status", "FAILED")
-                .put("progress", 0)
-                .put("errorMsg", "当前调试版仅确认收到升级指令，未执行固件下载安装");
-        reportRuntimeEvent("upgradeStatus", "/api/v1/upgrade/status", status);
+                .put("downloadUrl", absoluteBackendUrl(command.optString("downloadUrl", ""))), false);
     }
 
     private void handleCancelUpgrade(JSONObject command) throws Exception {
-        sendSocket(new JSONObject()
-                .put("cmd", "cancelUpgradeResp")
-                .put("code", 0)
-                .put("msg", "cancelled"));
-        reportRuntimeEvent("upgradeStatus", "/api/v1/upgrade/status", new JSONObject()
-                .put("firmwareVersion", command.optString("firmwareVersion", ""))
-                .put("status", "CANCELLED")
-                .put("progress", 0)
-                .put("errorMsg", JSONObject.NULL));
+        completeCommand(command, baseCommandResponse(command, "cancelUpgradeResp")
+                .put("code", 501).put("status", "NOT_SUPPORTED")
+                .put("msg", "当前没有可取消的真实固件升级任务"), false);
     }
 
     private void handleDeviceSelfCheck(JSONObject command) throws Exception {
@@ -496,26 +591,27 @@ public class DeviceCoreService extends Service {
                 .put("timestamp", System.currentTimeMillis());
         reportRuntimeEvent("selfCheckReport", "/api/v1/device/selfcheck", data);
         reportRuntimeEvent("statisticsReport", "/api/v1/statistics/report", statisticsData(data.optJSONObject("slotSummary")));
-        sendSocket(new JSONObject()
-                .put("cmd", "deviceSelfCheckResp")
-                .put("code", 0)
-                .put("msg", "success")
-                .put("data", data));
+        completeCommand(command, baseCommandResponse(command, "deviceSelfCheckResp")
+                .put("code", 0).put("status", "SUCCESS").put("msg", "success")
+                .put("data", data), true);
     }
 
     private void handleLogUploadToggle(JSONObject command) throws Exception {
-        JSONObject settings = new com.xingyao.card.core.NativeSettingsRepository(this).load();
-        settings.put("logUploadEnabled", command.optBoolean("enabled", "enableLogUpload".equals(command.optString("cmd"))));
-        new com.xingyao.card.core.NativeSettingsRepository(this).save(settings);
-        record("socket.logUpload", new JSONObject()
-                .put("enabled", settings.optBoolean("logUploadEnabled"))
+        JSONObject settings = new NativeSettingsRepository(this).load();
+        settings.put("logUploadEnabled", command.optBoolean("enabled",
+                "enableLogUpload".equals(command.optString("cmd"))));
+        new NativeSettingsRepository(this).save(settings);
+        boolean enabled = settings.optBoolean("logUploadEnabled");
+        record("socket.logUpload", new JSONObject().put("enabled", enabled)
                 .put("operatorId", command.optString("operatorId", "")));
-        reportLog(settings.optBoolean("logUploadEnabled") ? "INFO" : "INFO", "LOG_UPLOAD",
-                settings.optBoolean("logUploadEnabled") ? "日志上传已开启" : "日志上传已关闭");
+        reportLog("INFO", "LOG_UPLOAD", enabled ? "日志上传已开启" : "日志上传已关闭");
+        completeCommand(command, baseCommandResponse(command, command.optString("cmd", "") + "Resp")
+                .put("code", 0).put("status", "SUCCESS").put("enabled", enabled), true);
     }
 
     private void handleRestartApp(JSONObject command) throws Exception {
-        sendSocket(new JSONObject().put("cmd", "restartAppResp").put("code", 0).put("msg", "restarting"));
+        completeCommand(command, baseCommandResponse(command, "restartAppResp")
+                .put("code", 0).put("status", "ACCEPTED").put("msg", "restarting"), true);
         long delay = Math.max(0, command.optLong("delayMs", 3000L));
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
@@ -524,6 +620,53 @@ public class DeviceCoreService extends Service {
                 startActivity(intent);
             }
         }, delay);
+    }
+
+    private JSONObject baseCommandResponse(JSONObject command, String responseCmd) {
+        JSONObject response = new JSONObject();
+        try {
+            response.put("cmd", responseCmd == null || responseCmd.trim().isEmpty() ? "commandResp" : responseCmd)
+                    .put("requestMsgId", command == null ? "" : command.optString("msgId", ""))
+                    .put("deviceCode", currentDeviceCode())
+                    .put("timestamp", System.currentTimeMillis());
+        } catch (JSONException ignored) { }
+        return response;
+    }
+
+    private void completeCommand(JSONObject command, JSONObject response, boolean success) {
+        String msgId = command == null ? "" : command.optString("msgId", "");
+        if (inboundCommandRepository != null) {
+            boolean persisted = success
+                    ? inboundCommandRepository.complete(msgId, response)
+                    : inboundCommandRepository.fail(msgId, response);
+            if (!persisted) {
+                try {
+                    record("socket.command.idempotency.persistFailed", new JSONObject()
+                            .put("msgId", msgId)
+                            .put("success", success)
+                            .put("responseCmd", response == null ? "" : response.optString("cmd", "")));
+                } catch (JSONException ignored) { }
+            }
+        }
+        try {
+            sendSocket(response);
+        } catch (Exception error) {
+            recordCommandSendFailure(response, error);
+        }
+    }
+
+    private void recordCommandSendFailure(JSONObject response, Exception error) {
+        try {
+            record("socket.command.response.failed", new JSONObject()
+                    .put("message", safeMessage(error))
+                    .put("response", response == null ? JSONObject.NULL : response));
+        } catch (JSONException ignored) { }
+    }
+
+    private static String safeMessage(Throwable error) {
+        if (error == null) return "unknown";
+        String value = error.getMessage();
+        return value == null || value.trim().isEmpty() ? error.getClass().getSimpleName() : value;
     }
 
     private void reportSlotStatus(JSONObject slot) {
@@ -550,6 +693,7 @@ public class DeviceCoreService extends Service {
     }
 
     private void reportSlotSnapshot() {
+        if (webSocketManager == null || !webSocketManager.isAuthenticated()) return;
         try {
             JSONArray source = slotRepository.snapshotSlots();
             JSONArray known = new JSONArray();
@@ -652,7 +796,8 @@ public class DeviceCoreService extends Service {
         }
     }
 
-    private void sendCardEvent(int slotId, String eventType, String authType) {
+    private void sendCardEvent(int slotId, String eventType, String authType, String operationId,
+                               String requestMsgId, String employeeId) {
         try {
             JSONObject slot = slotRepository.getSlot(slotId);
             JSONObject data = new JSONObject()
@@ -660,13 +805,20 @@ public class DeviceCoreService extends Service {
                     .put("eventType", eventType)
                     .put("slotId", slotId)
                     .put("timestamp", System.currentTimeMillis())
-                    .put("authType", normalizeAuthType(authType));
+                    .put("authType", normalizeAuthType(authType))
+                    .put("operationId", operationId == null ? "" : operationId)
+                    .put("requestMsgId", requestMsgId == null ? "" : requestMsgId)
+                    .put("employeeId", employeeId == null ? "" : employeeId)
+                    .put("physicalConfirmed", false);
             JSONObject payload = new JSONObject().put("cmd", "cardEvent").put("data", data);
             try { sendSocket(payload); } catch (Exception error) {
-                record("socket.card.event.failed", new JSONObject().put("message", error.getMessage()).put("payload", payload));
+                record("socket.card.event.failed", new JSONObject().put("message", safeMessage(error)).put("payload", payload));
             }
             postCardEventHttp(data);
-        } catch (Exception ignored) { }
+        } catch (Exception error) {
+            try { record("card.event.build.failed", new JSONObject().put("message", safeMessage(error))); }
+            catch (JSONException ignored) { }
+        }
     }
 
     private void postCardEventHttp(JSONObject eventData) {

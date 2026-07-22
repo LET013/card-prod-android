@@ -89,8 +89,11 @@ public final class SlotStateRepository {
         int full = 0;
         int fault = 0;
         int unknown = 0;
+        int known = 0;
         for (int index = 0; index < source.length(); index++) {
-            String status = mapBackendStatus(source.getJSONObject(index).optString("status"));
+            JSONObject slot = source.getJSONObject(index);
+            if (slot.optLong("updatedAt", 0L) > 0L) known++;
+            String status = mapBackendStatus(slot.optString("status"));
             if ("EMPTY".equals(status)) empty++;
             else if ("CHARGING".equals(status)) charging++;
             else if ("FULL".equals(status)) full++;
@@ -99,7 +102,7 @@ public final class SlotStateRepository {
             else occupied++;
         }
         return new JSONObject()
-                .put("knownSlots", source.length())
+                .put("knownSlots", known)
                 .put("totalSlots", totalSlots)
                 .put("singleGroupCount", singleGroupCount)
                 .put("emptyCount", empty)
@@ -131,7 +134,7 @@ public final class SlotStateRepository {
                 }
             }
         }
-        return 1;
+        return -1;
     }
 
     private void ensureSlotsLocked() {

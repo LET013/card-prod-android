@@ -5,8 +5,12 @@
 import { onMounted } from 'vue'
 import { appState } from '@/state/appState.js'
 import { mockService } from '@/services/mockService.js'
+import { services } from '@/services/index.js'
 onMounted(async()=>{
-  await mockService.wait(900)
+  await Promise.all([
+    mockService.wait(900),
+    services.loadSettings().catch(() => null)
+  ])
   const target=appState.settings.initialized?'/pages/index/index':'/pages/config/config?first=1'
   uni.reLaunch({url:target})
 })

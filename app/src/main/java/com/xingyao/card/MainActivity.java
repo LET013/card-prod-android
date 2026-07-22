@@ -146,7 +146,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadUniApp() {
-        webViewManager.loadUrl("http://localhost:" + LOCAL_HTTP_PORT + "/index.html");
+        webViewManager.loadUrl("http://127.0.0.1:" + LOCAL_HTTP_PORT + "/index.html");
+    }
+
+    public boolean isOriginScopedBridgeEnabled() {
+        return webViewManager != null && webViewManager.isOriginScopedBridgeEnabled();
     }
 
     public void sendBridgeResponse(JSONObject response) {

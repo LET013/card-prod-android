@@ -246,7 +246,7 @@ public final class DeviceDataSyncManager {
             if (employeeId.isEmpty() || (faceFeature.isEmpty() && imageBase64.isEmpty() && imageUrl.isEmpty())) {
                 failures.put(new JSONObject().put("employeeId", employeeId)
                         .put("faceId", face.optString("faceId", ""))
-                        .put("message", "人脸同步数据缺少 employeeId、faceFeature 或 faceImage");
+                        .put("message", "人脸同步数据缺少 employeeId、faceFeature 或 faceImage"));
                 continue;
             }
             try {

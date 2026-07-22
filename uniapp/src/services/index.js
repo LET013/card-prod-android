@@ -10,17 +10,25 @@ import {
   rebuildSlots
 } from '@/state/appState.js'
 
-const nativeOrMock = async (action, payload, fallback) => {
+const MOCK_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === 'true'
+
+const nativeOrMock = async (action, payload, fallback, timeout = 2500) => {
   if (nativeBridge.isAvailable()) {
     try {
-      return await nativeBridge.request(action, payload)
+      return await nativeBridge.request(action, payload, timeout)
     } catch (error) {
       const message = String(error?.message || '')
-      if (!['NATIVE_BRIDGE_UNAVAILABLE', 'NATIVE_BRIDGE_TIMEOUT'].includes(message) && !message.includes('NOT_IMPLEMENTED')) {
-        throw error
-      }
+      const bridgeUnavailable = ['NATIVE_BRIDGE_UNAVAILABLE', 'NATIVE_BRIDGE_TIMEOUT'].includes(message) || message.includes('NOT_IMPLEMENTED')
+      if (!bridgeUnavailable || !MOCK_ENABLED) throw error
     }
+  } else if (!MOCK_ENABLED) {
+    throw new Error(`NATIVE_BRIDGE_REQUIRED: ${action}`)
   }
+  return fallback()
+}
+
+const mockOnly = (action, fallback) => {
+  if (!MOCK_ENABLED) return Promise.reject(new Error(`NATIVE_NOT_IMPLEMENTED: ${action}`))
   return fallback()
 }
 
@@ -169,26 +177,19 @@ export const services = {
     const result = await nativeOrMock('cabinet.getSlots', {}, () => mockService.getSlots().then((slots) => ({ slots })))
     const slots = Array.isArray(result) ? result : result?.slots
     if (Array.isArray(slots)) return JSON.parse(JSON.stringify(applyNativeSlots(slots)))
-    return mockService.getSlots()
+    if (MOCK_ENABLED) return mockService.getSlots()
+    throw new Error('INVALID_NATIVE_SLOT_RESPONSE')
   },
-  unlockDoor: (slotNumber) => nativeBridge.isAvailable()
-    ? nativeBridge.request('cabinet.unlockDoor', { slotNumber }, 5000)
-    : mockService.unlockDoor(slotNumber),
-  takeCard: (slotNumber) => nativeBridge.isAvailable()
-    ? nativeBridge.request('cabinet.takeCard', { slotNumber }, 5000)
-    : mockService.unlockDoor(slotNumber),
-  returnCard: (slotNumber) => nativeBridge.isAvailable()
-    ? nativeBridge.request('cabinet.returnCard', { slotNumber }, 5000)
-    : mockService.unlockDoor(slotNumber),
-  querySlot: (slotNumber) => nativeBridge.isAvailable()
-    ? nativeBridge.request('cabinet.querySlot', { slotNumber }, 5000)
-    : Promise.resolve({ success: true, ack: true, slotNumber, message: '浏览器模拟环境未读取真实卡槽状态' }),
-  readBoardVersion: (slotNumber) => nativeBridge.isAvailable()
-    ? nativeBridge.request('cabinet.readVersion', { slotNumber }, 5000)
-    : Promise.resolve({ success: true, ack: true, slotNumber, message: '浏览器模拟环境未读取真实单板版本' }),
-  unlockAllDoors: () => nativeBridge.isAvailable()
-    ? nativeBridge.request('cabinet.unlockAll', {}, 70000)
-    : mockService.unlockAllDoors(),
+  unlockDoor: (slotNumber) => nativeOrMock('cabinet.unlockDoor', { slotNumber }, () => mockService.unlockDoor(slotNumber), 5000),
+  takeCard: (slotNumber) => nativeOrMock('cabinet.takeCard', { slotNumber }, () => mockService.unlockDoor(slotNumber), 5000),
+  returnCard: (slotNumber) => nativeOrMock('cabinet.returnCard', { slotNumber }, () => mockService.unlockDoor(slotNumber), 5000),
+  querySlot: (slotNumber) => nativeOrMock('cabinet.querySlot', { slotNumber }, async () => ({
+    success: true, ack: true, slotNumber, message: '浏览器模拟环境未读取真实卡槽状态'
+  }), 5000),
+  readBoardVersion: (slotNumber) => nativeOrMock('cabinet.readVersion', { slotNumber }, async () => ({
+    success: true, ack: true, slotNumber, message: '浏览器模拟环境未读取真实单板版本'
+  }), 5000),
+  unlockAllDoors: () => nativeOrMock('cabinet.unlockAll', {}, () => mockService.unlockAllDoors(), 70000),
   reactivateFaceEngine: () => nativeOrMock('face.reactivate', {}, async () => {
     appState.runtime.recognitionEngine = { state: 'ACTIVE', message: '模拟环境已刷新识别引擎', lastCode: null }
     persistRuntime()
@@ -209,6 +210,7 @@ export const services = {
       onProgress?.('SUCCESS')
       return result
     }
+    if (!MOCK_ENABLED) throw new Error(`NATIVE_BIOMETRIC_REQUIRED: ${type}`)
     return mockService.runRecognition(type, onProgress)
   },
   cancelRecognition(type) {
@@ -245,6 +247,7 @@ export const services = {
       onProgress?.('SUCCESS')
       return result
     }
+    if (!MOCK_ENABLED) throw new Error(`NATIVE_BIOMETRIC_REQUIRED: ${type}`)
     return mockService.registerBiometric(type, employee, onProgress)
   },
   async searchEmployees(query) {
@@ -258,9 +261,9 @@ export const services = {
     persistEmployees()
     return result
   },
-  getHistory: () => mockService.getHistory(),
-  getUpgradeFiles: () => mockService.getUpgradeFiles(),
-  startUpgrade: (fileId, onProgress) => mockService.startUpgrade(fileId, onProgress),
+  getHistory: () => mockOnly('history.get', () => mockService.getHistory()),
+  getUpgradeFiles: () => mockOnly('upgrade.files', () => mockService.getUpgradeFiles()),
+  startUpgrade: (fileId, onProgress) => mockOnly('upgrade.start', () => mockService.startUpgrade(fileId, onProgress)),
   savePassword: (role, password) => nativeOrMock('auth.changePassword', { role, password }, () => mockService.savePassword(role, password)),
   restartApp: () => nativeOrMock('app.restart', {}, async () => ({ success: true, message: '模拟环境不执行真实重启' }))
 }

@@ -6,6 +6,11 @@ import android.content.SharedPreferences;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
+
 public class NativeSettingsRepository {
     private static final String PREFS = "card_native_settings";
     private static final String KEY_SETTINGS = "settings_json";
@@ -13,6 +18,10 @@ public class NativeSettingsRepository {
     private static final String DEFAULT_MQTT_BROKER = "tcp://119.146.88.108:48419";
     private static final String DEFAULT_ACTIVATION_CODE = "123123";
     private static final String DEFAULT_MAC = "AA:BB:CC:DD:EE:FF";
+    private static final Set<String> INTERNAL_ONLY_KEYS = new HashSet<>(Arrays.asList(
+            "deviceToken", "mqttPassword", "signingKey", "machineId", "clientId",
+            "registerCode", "registerCodeExpireTime", "provisionedAt"
+    ));
     private final SharedPreferences preferences;
 
     public NativeSettingsRepository(Context context) {
@@ -25,12 +34,43 @@ public class NativeSettingsRepository {
         return mergeDefaults(loaded);
     }
 
+    /** Settings safe to expose to the trusted H5 UI; backend credentials never cross the bridge. */
+    public JSONObject loadForUi() throws JSONException {
+        return sanitizeForUi(load());
+    }
+
+    /**
+     * Merge UI-editable values over the internal snapshot while preserving credentials
+     * and stable provisioning identifiers owned by Android.
+     */
+    public JSONObject saveFromUi(JSONObject settings) throws JSONException {
+        JSONObject merged = load();
+        JSONObject source = settings == null ? new JSONObject() : settings;
+        Iterator<String> keys = source.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (!INTERNAL_ONLY_KEYS.contains(key)) merged.put(key, source.opt(key));
+        }
+        return sanitizeForUi(save(merged));
+    }
+
+    public boolean isInitialized() {
+        try { return load().optBoolean("initialized", false); }
+        catch (JSONException ignored) { return false; }
+    }
+
     public JSONObject save(JSONObject settings) throws JSONException {
         JSONObject clean = mergeDefaults(settings == null ? new JSONObject() : new JSONObject(settings.toString()));
         clean.put("initialized", true);
         clean.put("updatedAt", System.currentTimeMillis());
         preferences.edit().putString(KEY_SETTINGS, clean.toString()).apply();
         return clean;
+    }
+
+    private static JSONObject sanitizeForUi(JSONObject source) throws JSONException {
+        JSONObject result = new JSONObject(source == null ? "{}" : source.toString());
+        for (String key : INTERNAL_ONLY_KEYS) result.remove(key);
+        return result;
     }
 
     private static JSONObject mergeDefaults(JSONObject loaded) throws JSONException {
