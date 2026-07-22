@@ -1,12 +1,6 @@
 name: Apply device integration batch 1
 
 on:
-  push:
-    branches:
-      - fix/device-integration-architecture
-    paths:
-      - '.batch1/**'
-      - '.github/workflows/apply-device-batch1.yml'
   pull_request:
     branches:
       - main
@@ -116,73 +110,13 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-      - name: Replace one-time workflow with permanent CI
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf .batch1
-          rm -f .github/workflows/apply-device-batch1.yml
-          cat > .github/workflows/device-integration-ci.yml <<'YAML'
-          name: Device integration CI
-
-          on:
-            pull_request:
-              branches:
-                - main
-              paths:
-                - 'app/**'
-                - 'uniapp/**'
-                - 'docs/**'
-                - 'gradle/**'
-                - 'gradlew'
-                - 'gradlew.bat'
-                - '.github/workflows/device-integration-ci.yml'
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-
-          jobs:
-            validate:
-              runs-on: ubuntu-latest
-              timeout-minutes: 30
-              steps:
-                - uses: actions/checkout@v4
-                - uses: actions/setup-java@v4
-                  with:
-                    distribution: temurin
-                    java-version: '17'
-                - name: Validate frontend syntax
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    node --check uniapp/src/services/nativeBridge.js
-                    node --check uniapp/src/services/index.js
-                    python3 - <<'PY'
-                    from pathlib import Path
-                    for name in [
-                        'uniapp/src/pages/serial-demo/serial-demo.vue',
-                        'uniapp/src/pages/splash/splash.vue',
-                    ]:
-                        value = Path(name).read_text()
-                        assert value.count('<template>') == value.count('</template>'), name
-                        assert value.count('<script setup>') == value.count('</script>'), name
-                        assert value.count('<style') == value.count('</style>'), name
-                    PY
-                - name: Run Android unit tests
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    chmod +x gradlew
-                    ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
-          YAML
-
-      - name: Commit audited batch
+      - name: Commit complete validated source
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git status --short
           git add -A
           git commit -m "建立设备端安全边界与命令幂等骨架"
           git push origin HEAD:fix/device-integration-architecture
