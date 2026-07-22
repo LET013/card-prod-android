@@ -120,15 +120,26 @@ jobs:
 
       - name: Run Android tests
         shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
         run: |
           set +e
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/android-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            echo '===== ANDROID_TEST_FAILURE ====='
-            grep -E -i '(^|[[:space:]])error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|There were failing tests|Compilation failed|Execution failed for task|Exception is:' /tmp/android-tests.log | tail -n 80 || true
-            echo '===== END_FAILURE ====='
+            mkdir -p .diagnostic
+            {
+              echo 'ANDROID_TEST_FAILURE'
+              grep -E -i '(^|[[:space:]])error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|There were failing tests|Compilation failed|Execution failed for task|Exception is:' /tmp/android-tests.log | tail -n 120 || true
+              echo '--- LOG TAIL ---'
+              tail -n 120 /tmp/android-tests.log
+            } > .diagnostic/contract-rollback-error.txt
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add .diagnostic/contract-rollback-error.txt
+            git commit -m '记录契约回退编译诊断 [skip ci]'
+            git push origin HEAD:"${HEAD_BRANCH}"
             exit "$status"
           fi
           echo 'ANDROID_TESTS_PASSED'
@@ -140,9 +151,8 @@ jobs:
           ./gradlew :app:assembleDebug --no-daemon --console=plain > /tmp/android-build.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            echo '===== ANDROID_BUILD_FAILURE ====='
+            echo 'ANDROID_BUILD_FAILURE'
             grep -E -i '(^|[[:space:]])error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|Compilation failed|Execution failed for task|Exception is:' /tmp/android-build.log | tail -n 80 || true
-            echo '===== END_FAILURE ====='
             exit "$status"
           fi
           test -s app/build/outputs/apk/debug/app-debug.apk
