@@ -57,6 +57,13 @@ Before approving the plan, answer:
 
 Any “no” must be addressed or recorded as scoped technical debt.
 
+## Contract evidence gate
+
+For every external field, endpoint, enum, timing rule, address mapping, authentication rule and
+wire payload, cite an original repository document or an explicit user decision. If no source exists,
+keep it disabled/blank and add it to `docs/CONTRACT_EVIDENCE_REGISTER.md`. Never implement a
+"likely" backend or hardware behavior.
+
 ## Stop conditions
 
 Stop and report a blocker instead of guessing when:

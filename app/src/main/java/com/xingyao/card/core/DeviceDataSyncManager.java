@@ -39,25 +39,24 @@ public final class DeviceDataSyncManager {
         JSONObject settings = settingsRepository.load();
         String apiBaseUrl = BackendHttpGateway.baseUrl(settings);
         boolean full = isFull(command);
-        JSONObject deviceScope = deviceScope(settings);
 
         PageResult employeePage = pullPaged(BackendHttpGateway.EMPLOYEE_SYNC, "employees",
                 full ? 0L : dataRepository.employeeSyncVersion(), EMPLOYEE_PAGE_SIZE,
-                deviceScope, "deletedEmployeeIds");
+                null, "deletedEmployeeIds");
         PageResult facePage = pullPaged(BackendHttpGateway.FACE_SYNC, "faceFeatures",
                 full ? 0L : dataRepository.faceSyncVersion(), FACE_PAGE_SIZE,
-                new JSONObject(deviceScope.toString()).put("includeFlags",
+                new JSONObject().put("includeFlags",
                         settings.optInt("faceSyncIncludeFlags", 3)), null);
         PageResult fingerPage = pullPaged(BackendHttpGateway.FINGER_SYNC, "fingerFeatures",
                 full ? 0L : dataRepository.fingerSyncVersion(), FINGER_PAGE_SIZE,
-                deviceScope, null);
+                null, null);
 
         JSONArray employees = normalizeEmployees(employeePage.items, facePage.items,
                 fingerPage.items, apiBaseUrl);
         JSONArray faces = normalizeFaceFeatures(facePage.items, apiBaseUrl);
+        deleteEmployeeTemplates(employeePage.deletedIds);
         dataRepository.applyEmployeeSync(employees, employeePage.deletedIds, full,
                 employeePage.syncVersion);
-        deleteEmployeeTemplates(employeePage.deletedIds);
         dataRepository.stageFaceSync(faces, full, facePage.syncVersion);
         JSONObject faceImport = importFaceTemplates(faces, dataRepository.employees(), full);
         if (faceImport.optInt("failedCount", 0) == 0) {
@@ -87,14 +86,14 @@ public final class DeviceDataSyncManager {
         boolean full = isFull(command);
         PageResult page = pullPaged(BackendHttpGateway.EMPLOYEE_SYNC, "employees",
                 full ? 0L : dataRepository.employeeSyncVersion(), EMPLOYEE_PAGE_SIZE,
-                deviceScope(settings), "deletedEmployeeIds");
+                null, "deletedEmployeeIds");
         JSONObject current = dataRepository.snapshot();
         JSONArray employees = normalizeEmployees(page.items,
                 safeArray(current, "faceFeatures"), safeArray(current, "fingerFeatures"),
                 BackendHttpGateway.baseUrl(settings));
+        deleteEmployeeTemplates(page.deletedIds);
         JSONObject snapshot = dataRepository.applyEmployeeSync(employees, page.deletedIds,
                 full, page.syncVersion);
-        deleteEmployeeTemplates(page.deletedIds);
         return new JSONObject().put("code", 0).put("msg", "success")
                 .put("full", full)
                 .put("employeeCount", employees.length())
@@ -106,7 +105,7 @@ public final class DeviceDataSyncManager {
     public synchronized JSONObject syncFaces(JSONObject command) throws Exception {
         JSONObject settings = settingsRepository.load();
         boolean full = isFull(command);
-        JSONObject scope = deviceScope(settings).put("includeFlags",
+        JSONObject scope = new JSONObject().put("includeFlags",
                 command == null ? settings.optInt("faceSyncIncludeFlags", 3)
                         : command.optInt("includeFlags", settings.optInt("faceSyncIncludeFlags", 3)));
         PageResult page = pullPaged(BackendHttpGateway.FACE_SYNC, "faceFeatures",
@@ -131,7 +130,7 @@ public final class DeviceDataSyncManager {
         boolean full = isFull(command);
         PageResult page = pullPaged(BackendHttpGateway.FINGER_SYNC, "fingerFeatures",
                 full ? 0L : dataRepository.fingerSyncVersion(), FINGER_PAGE_SIZE,
-                deviceScope(settings), null);
+                null, null);
         JSONObject snapshot = dataRepository.applyFingerSync(page.items, full, page.syncVersion);
         return new JSONObject().put("code", 0).put("msg", "success")
                 .put("full", full)
@@ -238,8 +237,7 @@ public final class DeviceDataSyncManager {
         for (int index = 0; faces != null && index < faces.length(); index++) {
             JSONObject face = faces.optJSONObject(index);
             if (face == null) continue;
-            String employeeId = face.optString("employeeId",
-                    face.optString("employeeCode", face.optString("faceId", ""))).trim();
+            String employeeId = face.optString("employeeId", "").trim();
             if (employeeId.isEmpty()) {
                 failures.put(failure(face, "人脸同步数据缺少employeeId"));
                 continue;
@@ -276,13 +274,8 @@ public final class DeviceDataSyncManager {
                     arcFaceManager.enrollImage(employeeId, employeeName,
                             decodeBase64(imageBase64), imageUrl);
                 } else {
-                    try {
-                        arcFaceManager.enrollImage(employeeId, employeeName,
-                                httpGateway.downloadBytes(imageUrl, true), imageUrl);
-                    } catch (Exception authorizedError) {
-                        arcFaceManager.enrollImage(employeeId, employeeName,
-                                httpGateway.downloadBytes(imageUrl, false), imageUrl);
-                    }
+                    arcFaceManager.enrollImage(employeeId, employeeName,
+                            httpGateway.downloadBytes(imageUrl, true), imageUrl);
                 }
                 successCount++;
             } catch (Exception error) {
@@ -305,8 +298,7 @@ public final class DeviceDataSyncManager {
         for (int index = 0; index < deletedEmployeeIds.length(); index++) {
             String id = String.valueOf(deletedEmployeeIds.opt(index)).trim();
             if (id.isEmpty()) continue;
-            try { templateCleaner.deleteTemplate(id); }
-            catch (Exception ignored) { }
+            templateCleaner.deleteTemplate(id);
         }
     }
 
@@ -317,10 +309,6 @@ public final class DeviceDataSyncManager {
                 .put("message", message == null ? "unknown" : message);
     }
 
-    private static JSONObject deviceScope(JSONObject settings) throws JSONException {
-        return new JSONObject().put("deviceCode",
-                settings.optString("deviceCode", settings.optString("deviceId", "")));
-    }
 
     private static boolean isFull(JSONObject command) {
         return command != null && (command.optBoolean("full", false)
@@ -329,15 +317,13 @@ public final class DeviceDataSyncManager {
 
     private static boolean isDisabled(JSONObject item) {
         String status = item == null ? "" : item.optString("status", "");
-        return "1".equals(status) || "DELETED".equalsIgnoreCase(status)
-                || "DISABLED".equalsIgnoreCase(status);
+        return "1".equals(status);
     }
 
     private static boolean truthy(Object value) {
         if (value instanceof Boolean) return (Boolean) value;
         String text = String.valueOf(value).trim();
-        return "1".equals(text) || "true".equalsIgnoreCase(text)
-                || "yes".equalsIgnoreCase(text);
+        return "1".equals(text) || "true".equalsIgnoreCase(text);
     }
 
     private static boolean hasFeature(JSONArray items, String employeeId) {
@@ -378,32 +364,16 @@ public final class DeviceDataSyncManager {
     private static String normalizeFaceFeatureValue(JSONObject face) {
         if (face == null) return "";
         Object raw = face.opt("faceFeature");
-        String value = "";
-        if (raw instanceof JSONObject) {
-            JSONObject object = (JSONObject) raw;
-            value = firstString(object, "feature", "value", "data");
-        } else if (raw != null && raw != JSONObject.NULL) {
-            value = String.valueOf(raw).trim();
-        }
-        if (value.isEmpty()) value = firstString(face,
-                "feature", "featureData", "faceFeatureData", "faceFeatureBase64", "template");
-        return stripDataPrefix(value).replaceAll("\\s+", "");
+        if (raw == null || raw == JSONObject.NULL) return "";
+        return stripDataPrefix(String.valueOf(raw)).replaceAll("\\s+", "");
     }
 
     private static String normalizeFaceImageBase64(JSONObject face) {
-        return stripDataPrefix(firstString(face,
-                "faceImageBase64", "faceImageData", "faceImageBase64Data",
-                "imageBase64", "photoBase64")).replaceAll("\\s+", "");
+        if (face == null) return "";
+        return stripDataPrefix(face.optString("faceImageBase64", ""))
+                .replaceAll("\\s+", "");
     }
 
-    private static String firstString(JSONObject source, String... keys) {
-        if (source == null || keys == null) return "";
-        for (String key : keys) {
-            String value = source.optString(key, "").trim();
-            if (!value.isEmpty()) return value;
-        }
-        return "";
-    }
 
     private static String stripDataPrefix(String value) {
         String result = value == null ? "" : value.trim();

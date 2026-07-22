@@ -54,6 +54,14 @@ UI层（Vue）
 - `MainActivity` 只负责 WebView、Service 启动和必须依赖 Activity 的相机/系统指纹 UI。
 - Activity 的人脸/指纹结果必须回到 `DeviceDataLayer` 后才能更新业务 Map。
 
+## 契约证据规则
+
+- 每个后端字段、路径、请求方法、枚举和响应语义必须能指向仓库原始文档或用户明确确认。
+- 文档未定义时只能留空、禁用或写入 `docs/CONTRACT_EVIDENCE_REGISTER.md`，禁止兼容猜测。
+- 本地工程状态可以有 `operationId` 等内部字段，但未经文档确认不得进入 HTTP/MQTT payload。
+- 不得用测试 IP、常见端口、猜测 username、时间窗口或 slot 映射制造“可用”。
+- 文档冲突时停止执行相关功能，不自行选择解释。
+
 ## 绝对禁止
 
 - Vue 自行创建、删除、恢复或持久化员工/卡槽业务记录。

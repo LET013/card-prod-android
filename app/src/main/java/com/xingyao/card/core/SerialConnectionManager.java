@@ -33,8 +33,8 @@ public final class SerialConnectionManager {
 
     private static final String DEFAULT_PORT = "/dev/ttyS5";
     private static final int DEFAULT_BAUD_RATE = 57600;
-    private static final long RESPONSE_TIMEOUT_MS = 1500L;
-    private static final long POLLING_INTERVAL_MS = 1200L;
+    private static final long RESPONSE_TIMEOUT_MS = 100L;
+    private static final long POLLING_INTERVAL_MS = 5000L;
     private static final long COMMAND_GAP_MS = 200L;
 
     private final NativeSettingsRepository settingsRepository;
@@ -89,17 +89,18 @@ public final class SerialConnectionManager {
         commandGapMs = parsePositiveLong(settings == null ? "" : settings.optString("serialCommandGapMs", ""), COMMAND_GAP_MS);
         pollingIntervalMs = parsePositiveLong(settings == null ? "" : settings.optString("serialPollingIntervalMs",
                 settings.optString("backendPollingIntervalMs", "")), POLLING_INTERVAL_MS);
-        pollingEnabled = settings != null && settings.optBoolean("serialPollingEnabled", true);
-        cardNumberMode = settings == null ? "VISIBLE"
-                : settings.optString("cardNumberMode", "VISIBLE").trim().toUpperCase(Locale.US);
-        if (!"PHYSICAL".equals(cardNumberMode)) cardNumberMode = "VISIBLE";
+        pollingEnabled = false;
+        cardNumberMode = "VISIBLE";
         open(configuredPort.isEmpty() ? DEFAULT_PORT : configuredPort, configuredBaud);
     }
 
     public synchronized void reconnect() { open(port, baudRate); }
 
     public synchronized JSONObject setPollingEnabled(boolean enabled) throws JSONException {
-        pollingEnabled = enabled;
+        if (enabled) {
+            throw new IllegalStateException("SERIAL_TOPOLOGY_UNCONFIRMED：文档未定义逻辑卡位到从机地址的映射");
+        }
+        pollingEnabled = false;
         pendingAddress = -1;
         if (enabled && serialHelper != null && serialHelper.isOpen()) {
             startPolling();
@@ -180,34 +181,9 @@ public final class SerialConnectionManager {
         }
     }
 
-    public JSONObject openAllDoors(boolean administrator) throws Exception {
-        synchronized (serialCommandLock) {
-            int sent = 0;
-            int failed = 0;
-            JSONArray failures = new JSONArray();
-            boolean wasPolling = pausePollingForCommand();
-            try {
-                int addressLimit = pollingAddressLimit();
-                for (int address = 1; address <= addressLimit; address++) {
-                    try {
-                        writeCommandAndWait(address, WorkCardProtocol.FUNCTION_OPEN_DOOR,
-                                WorkCardProtocol.openDoor(address, administrator), "door.all");
-                        sent++;
-                    } catch (Exception error) {
-                        failed++;
-                        failures.put(new JSONObject().put("slotNumber", address).put("message", safeMessage(error)));
-                    }
-                    sleepQuietly(commandGapMs);
-                }
-            } finally {
-                resumePollingAfterCommand(wasPolling);
-            }
-            return new JSONObject().put("success", failed == 0).put("successCount", sent).put("failedCount", failed)
-                    .put("failures", failures)
-                    .put("singleGroupCount", singleGroupCount)
-                    .put("totalSlots", totalSlots)
-                    .put("message", "已按V1.5直接从机地址逐个发送开门指令");
-        }
+    public JSONObject openAllDoors(boolean administrator) {
+        throw new IllegalStateException(
+                "SERIAL_TOPOLOGY_UNCONFIRMED：无法在未知地址拓扑下执行一键弹卡");
     }
 
     public synchronized JSONObject snapshot() throws JSONException {
@@ -217,7 +193,7 @@ public final class SerialConnectionManager {
                 .put("responseTimeoutMs", responseTimeoutMs).put("pollingIntervalMs", pollingIntervalMs)
                 .put("commandGapMs", commandGapMs)
                 .put("cardNumberMode", cardNumberMode)
-                .put("addressMode", "DIRECT")
+                .put("addressMode", "UNCONFIRMED")
                 .put("sentBytes", sentBytes).put("receivedBytes", receivedBytes)
                 .put("lastReceivedAt", lastReceivedAt == 0 ? JSONObject.NULL : lastReceivedAt)
                 .put("lastError", lastError.isEmpty() ? JSONObject.NULL : lastError)
@@ -364,6 +340,7 @@ public final class SerialConnectionManager {
                 pendingAddress = -1;
             }
             int addressLimit = pollingAddressLimit();
+            if (addressLimit < 1) return;
             int address = Math.min(nextAddress, addressLimit);
             nextAddress = nextAddress >= addressLimit ? 1 : nextAddress + 1;
             try {
@@ -465,8 +442,11 @@ public final class SerialConnectionManager {
             JSONObject protocol = new JSONObject().put("type", "serialFrame").put("address", frame.slaveAddress)
                     .put("function", String.format("0x%02X", frame.function)).put("hex", WorkCardProtocol.hex(frame.raw));
             notifyData(protocol);
-            if (frame.function == WorkCardProtocol.FUNCTION_QUERY) notifySlot(parseSlotStatus(frame));
-            else if (frame.function == WorkCardProtocol.FUNCTION_OPEN_DOOR) notifyData(protocol.put("command", "openDoor").put("accepted", isAccepted(frame.data)));
+            if (frame.function == WorkCardProtocol.FUNCTION_QUERY) {
+                JSONObject unmapped = parseSlotStatus(frame);
+                notifyData(new JSONObject().put("type", "unmappedBoardStatus")
+                        .put("boardAddress", frame.slaveAddress).put("status", unmapped));
+            } else if (frame.function == WorkCardProtocol.FUNCTION_OPEN_DOOR) notifyData(protocol.put("command", "openDoor").put("accepted", isAccepted(frame.data)));
             else if (frame.function == WorkCardProtocol.FUNCTION_VERSION) notifyData(protocol.put("command", "version").put("version", parseVersion(frame.data)));
             completeAwaitingFrame(frame, protocol);
         } catch (JSONException ignored) { }
@@ -491,8 +471,8 @@ public final class SerialConnectionManager {
         byte[] cardBytes = new byte[15];
         System.arraycopy(frame.data, offset + 4, cardBytes, 0, cardBytes.length);
         String rawCardHex = WorkCardProtocol.hex(cardBytes);
-        String cardNo = "PHYSICAL".equals(cardNumberMode) ? rawCardHex
-                : new String(cardBytes, StandardCharsets.US_ASCII).replace("\u0000", "").trim();
+        String cardNo = new String(cardBytes, StandardCharsets.US_ASCII)
+                .replace("\u0000", "").trim();
         int fault = unsigned(frame.data[offset + 19]);
         double voltage = unsigned(frame.data[offset + 20]) * 0.05D;
         double current = unsigned(frame.data[offset + 21]) * 0.01D;
@@ -558,10 +538,8 @@ public final class SerialConnectionManager {
     private static int unsigned(byte value) { return value & 0xFF; }
     private static String safeMessage(Exception error) { String value = error.getMessage(); return value == null || value.trim().isEmpty() ? error.getClass().getSimpleName() : value; }
     private int serialAddressForSlot(int slotNumber) {
-        if (slotNumber < 1 || slotNumber > 255) {
-            throw new IllegalArgumentException("V1.5从机地址必须在1至255之间");
-        }
-        return slotNumber;
+        throw new IllegalStateException(
+                "SERIAL_TOPOLOGY_UNCONFIRMED：文档只定义从机地址，未定义slotId到从机地址的对应关系");
     }
-    private int pollingAddressLimit() { return Math.max(1, Math.min(totalSlots, 255)); }
+    private int pollingAddressLimit() { return 0; }
 }

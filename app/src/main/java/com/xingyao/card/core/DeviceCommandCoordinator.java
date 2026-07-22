@@ -64,8 +64,7 @@ public final class DeviceCommandCoordinator {
         if (InboundCommandRepository.STATUS_DUPLICATE_COMPLETED.equals(begin.status)) {
             JSONObject cached = begin.response == null ? baseResponse(safeCommand, cmd + "Resp") : begin.response;
             try {
-                cached.put("duplicate", true).put("replayed", true);
-                send(cached);
+                if (!isLogToggle(cmd)) send(cached);
             } catch (Exception error) {
                 recordSendFailure(cached, error);
             }
@@ -74,8 +73,7 @@ public final class DeviceCommandCoordinator {
         if (InboundCommandRepository.STATUS_DUPLICATE_PROCESSING.equals(begin.status)) {
             JSONObject processing = baseResponse(safeCommand, cmd + "Resp");
             try {
-                processing.put("code", 202).put("status", "PROCESSING")
-                        .put("msg", "相同指令正在处理中").put("duplicate", true);
+                processing.put("code", 202).put("msg", "相同指令正在处理中");
                 send(processing);
             } catch (Exception error) {
                 recordSendFailure(processing, error);
@@ -85,8 +83,7 @@ public final class DeviceCommandCoordinator {
         if (InboundCommandRepository.STATUS_REJECTED.equals(begin.status)) {
             JSONObject rejected = baseResponse(safeCommand, cmd.isEmpty() ? "commandResp" : cmd + "Resp");
             try {
-                rejected.put("code", 4001).put("status", "REJECTED")
-                        .put("errorCode", begin.code).put("msg", begin.message);
+                rejected.put("code", 4001).put("msg", begin.message);
                 send(rejected);
                 stateStore.record("security.command.rejected", rejected);
             } catch (Exception error) {
@@ -99,11 +96,7 @@ public final class DeviceCommandCoordinator {
             switch (cmd) {
                 case "remoteOpen": handleRemoteOpen(safeCommand); break;
                 case "remoteEjectAll": handleRemoteEjectAll(safeCommand); break;
-                case "queryStatus": handleQueryStatus(safeCommand); break;
                 case "syncUser": handleSync(safeCommand, "all"); break;
-                case "syncEmployeeData": handleSync(safeCommand, "employees"); break;
-                case "syncFaceData": handleSync(safeCommand, "faces"); break;
-                case "syncFingerData": handleSync(safeCommand, "fingers"); break;
                 case "syncConfig": handleSyncConfig(safeCommand); break;
                 case "firmwareUpgrade": handleUnsupportedUpgrade(safeCommand, false); break;
                 case "cancelUpgrade": handleUnsupportedUpgrade(safeCommand, true); break;
@@ -112,21 +105,15 @@ public final class DeviceCommandCoordinator {
                 case "disableLogUpload": handleLogUploadToggle(safeCommand); break;
                 case "restartApp": handleRestartApp(safeCommand); break;
                 default:
-                    complete(safeCommand, baseResponse(safeCommand, cmd.isEmpty() ? "commandResp" : cmd + "Resp")
-                            .put("code", 9000).put("status", "UNSUPPORTED")
-                            .put("msg", "unsupported command"), false);
+                    complete(safeCommand, baseResponse(safeCommand,
+                            cmd.isEmpty() ? "commandResp" : cmd + "Resp")
+                            .put("code", 9000).put("msg", "unsupported command"), false);
             }
         } catch (Exception error) {
             try {
-                JSONObject response = baseResponse(safeCommand, cmd.isEmpty() ? "commandResp" : cmd + "Resp")
-                        .put("code", 9000).put("status", "FAILED")
-                        .put("msg", safeMessage(error));
-                if (error instanceof DeviceOperationEngine.OperationException) {
-                    DeviceOperationEngine.OperationException operationError =
-                            (DeviceOperationEngine.OperationException) error;
-                    response.put("operationId", operationError.getOperationId())
-                            .put("errorCode", operationError.getFailureCode());
-                }
+                JSONObject response = baseResponse(safeCommand,
+                        cmd.isEmpty() ? "commandResp" : cmd + "Resp")
+                        .put("code", 9000).put("msg", safeMessage(error));
                 complete(safeCommand, response, false);
             } catch (Exception ignored) { }
         }
@@ -135,30 +122,14 @@ public final class DeviceCommandCoordinator {
     public void reportCardEvent(int slotId, String eventType, String authType,
                                 String operationId, String requestMsgId, String employeeId) {
         try {
-            JSONObject slot = stateStore.getSlot(slotId);
-            JSONObject data = new JSONObject()
-                    .put("cardNo", slot == null ? "" : slot.optString("cardNumber", ""))
-                    .put("eventType", eventType)
+            stateStore.record("card.event.awaitingPhysicalConfirmation", new JSONObject()
                     .put("slotId", slotId)
-                    .put("timestamp", System.currentTimeMillis())
-                    .put("authType", normalizeAuthType(authType))
+                    .put("eventType", safe(eventType))
+                    .put("authType", safe(authType))
                     .put("operationId", safe(operationId))
                     .put("requestMsgId", safe(requestMsgId))
-                    .put("employeeId", safe(employeeId))
-                    .put("physicalConfirmed", false);
-            JSONObject payload = new JSONObject().put("cmd", "cardEvent").put("data", data);
-            boolean sent = false;
-            try { send(payload); sent = true; }
-            catch (Exception error) {
-                stateStore.record("backend.cardEvent.failed", new JSONObject()
-                        .put("message", safeMessage(error)).put("payload", payload));
-            }
-            if (!sent && !BackendEndpointSettings.MODE_HTTP.equals(backendPort.transportMode())) {
-                postAsync(BackendHttpGateway.CARD_EVENT, data, "http.card.event.fallback");
-            }
-        } catch (Exception error) {
-            stateStore.record("card.event.build.failed", message(error));
-        }
+                    .put("employeeId", safe(employeeId)));
+        } catch (Exception ignored) { }
     }
 
     public void reportSlotSnapshot() {
@@ -175,10 +146,7 @@ public final class DeviceCommandCoordinator {
             }
             if (known.length() == 0) return;
             send(new JSONObject().put("cmd", "statusReport")
-                    .put("data", new JSONObject()
-                            .put("slots", known)
-                            .put("summary", stateStore.slotSummary())
-                            .put("timestamp", System.currentTimeMillis())));
+                    .put("data", new JSONObject().put("slots", known)));
         } catch (Exception error) {
             stateStore.record("backend.status.report.failed", message(error));
         }
@@ -196,96 +164,78 @@ public final class DeviceCommandCoordinator {
                 || !faultCode.trim().isEmpty();
         String previous = activeFaults.get(slotId);
         if (!hasFault) {
-            if (previous == null) return;
-            activeFaults.remove(slotId);
-            try {
-                reportRuntimeEvent("hardwareFault", BackendHttpGateway.FAULT_REPORT,
-                        new JSONObject().put("deviceId", currentDeviceCode())
-                                .put("slotId", slotId).put("faultCode", 0)
-                                .put("faultMsg", "RECOVERED").put("recovered", true)
-                                .put("timestamp", System.currentTimeMillis()));
-            } catch (Exception ignored) { }
+            if (previous != null) {
+                activeFaults.remove(slotId);
+                try {
+                    stateStore.record("hardware.fault.cleared", new JSONObject()
+                            .put("slotId", slotId).put("previous", previous));
+                } catch (Exception ignored) { }
+            }
             return;
         }
-        String signature = status + "|" + faultCode + "|" + slot.optString("faultMessage", "");
+        String signature = status + "|" + faultCode + "|"
+                + slot.optString("faultMessage", "");
         if (signature.equals(previous)) return;
         activeFaults.put(slotId, signature);
         try {
-            JSONObject data = new JSONObject()
-                    .put("deviceId", currentDeviceCode())
+            JSONObject mqttData = new JSONObject()
                     .put("slotId", slotId)
                     .put("faultCode", parseFaultCode(faultCode))
                     .put("faultMsg", slot.optString("faultMessage", status))
-                    .put("recovered", false)
                     .put("timestamp", System.currentTimeMillis());
-            reportRuntimeEvent("hardwareFault", BackendHttpGateway.FAULT_REPORT, data);
-        } catch (Exception ignored) { }
+            if (BackendEndpointSettings.MODE_HTTP.equals(backendPort.transportMode())) {
+                JSONObject httpData = new JSONObject(mqttData.toString())
+                        .put("deviceId", currentDeviceCode());
+                postAsync(BackendHttpGateway.FAULT_REPORT, httpData, "http.hardwareFault");
+                return;
+            }
+            try {
+                send(new JSONObject().put("cmd", "hardwareFault").put("data", mqttData));
+            } catch (Exception error) {
+                stateStore.record("backend.hardwareFault.failed", message(error));
+                JSONObject httpData = new JSONObject(mqttData.toString())
+                        .put("deviceId", currentDeviceCode());
+                postAsync(BackendHttpGateway.FAULT_REPORT, httpData,
+                        "http.hardwareFault.fallback");
+            }
+        } catch (Exception error) {
+            stateStore.record("hardware.fault.build.failed", message(error));
+        }
     }
 
     private void handleRemoteOpen(JSONObject command) throws Exception {
         int slotId = command.optInt("slotId", -1);
-        String msgId = command.optString("msgId", "");
-        JSONObject response = baseResponse(command, "remoteOpenResp").put("slotId", slotId);
+        JSONObject response = baseResponse(command, "remoteOpenResp");
         try {
-            JSONObject result = operationEngine.openDoor(slotId, true, "MQTT", msgId,
-                    command.optString("employeeId", ""));
-            String operationId = result.optString("operationId", "");
-            response.put("code", 0).put("status", "BOARD_ACKED")
-                    .put("operationId", operationId)
-                    .put("physicalConfirmationRequired", true)
-                    .put("result", result);
-            reportCardEvent(slotId, "TAKE", command.optString("authType", "REMOTE"),
-                    operationId, msgId, command.optString("employeeId", ""));
-            complete(command, response, true);
+            JSONObject result = operationEngine.openDoor(slotId, true, "MQTT",
+                    command.optString("msgId", ""), "");
+            stateStore.record("operation.remoteOpen.boardAcked", result);
+            complete(command, response.put("code", 0).put("msg", "success"), true);
         } catch (Exception error) {
-            response.put("code", 4003).put("status", "FAILED").put("msg", safeMessage(error));
-            if (error instanceof DeviceOperationEngine.OperationException) {
-                DeviceOperationEngine.OperationException operationError =
-                        (DeviceOperationEngine.OperationException) error;
-                response.put("operationId", operationError.getOperationId())
-                        .put("errorCode", operationError.getFailureCode());
-            }
-            complete(command, response, false);
+            complete(command, response.put("code", 4003)
+                    .put("msg", safeMessage(error)), false);
         }
     }
 
     private void handleRemoteEjectAll(JSONObject command) throws Exception {
         JSONObject response = baseResponse(command, "remoteEjectAllResp");
         if (!command.optBoolean("confirm", false)) {
-            complete(command, response.put("code", 4001).put("status", "REJECTED")
-                    .put("msg", "confirm required").put("ejectedCount", 0), false);
+            complete(command, response.put("code", 4001)
+                    .put("msg", "confirm required"), false);
             return;
         }
         try {
             JSONObject result = operationEngine.openAllDoors(true, "MQTT",
                     command.optString("msgId", ""));
-            int successCount = result.optInt("successCount", 0);
+            stateStore.record("operation.remoteEjectAll.boardAcked", result);
             int failedCount = result.optInt("failedCount", 0);
-            response.put("code", failedCount == 0 ? 0 : 4001)
-                    .put("status", failedCount == 0 ? "BOARD_ACKED"
-                            : successCount > 0 ? "PARTIAL" : "FAILED")
-                    .put("msg", failedCount == 0 ? "success" : "部分或全部单板未应答")
-                    .put("operationId", result.optString("operationId", ""))
-                    .put("physicalConfirmationRequired", successCount > 0)
-                    .put("ejectedCount", successCount)
-                    .put("failedCount", failedCount)
-                    .put("failures", result.optJSONArray("failures"));
-            complete(command, response, failedCount == 0);
+            complete(command, response.put("code", failedCount == 0 ? 0 : 4001)
+                    .put("msg", failedCount == 0 ? "success"
+                            : "部分或全部单板未应答"), failedCount == 0);
         } catch (Exception error) {
-            response.put("code", 4003).put("status", "FAILED")
-                    .put("msg", safeMessage(error)).put("ejectedCount", 0);
-            if (error instanceof DeviceOperationEngine.OperationException) {
-                response.put("operationId",
-                        ((DeviceOperationEngine.OperationException) error).getOperationId());
-            }
-            complete(command, response, false);
+            complete(command, response.put("code", 4003)
+                    .put("msg", safeMessage(error)), false);
         }
-    }
-
-    private void handleQueryStatus(JSONObject command) throws Exception {
-        complete(command, baseResponse(command, "statusResp")
-                .put("code", 0).put("status", "SUCCESS")
-                .put("data", stateStore.backendSlots(command.optInt("slotId", -1))), true);
     }
 
     private void handleSync(JSONObject command, String scope) throws JSONException {
@@ -330,20 +280,16 @@ public final class DeviceCommandCoordinator {
         JSONObject remote = httpGateway.getData(BackendHttpGateway.DEVICE_CONFIG);
         JSONObject saved = settingsRepository.save(DeviceConfigMapper.apply(current, remote));
         complete(command, baseResponse(command, "syncConfigResp")
-                .put("code", 0).put("status", "SUCCESS").put("msg", "success")
-                .put("deviceCode", currentDeviceCode())
-                .put("configUpdatedAt", saved.optLong("remoteConfigUpdatedAt", 0L)), true);
+                .put("code", 0).put("msg", "success"), true);
         if (configControl != null) configControl.apply(saved);
     }
 
     private void handleUnsupportedUpgrade(JSONObject command, boolean cancel) throws Exception {
-        complete(command, baseResponse(command, cancel ? "cancelUpgradeResp" : "firmwareUpgradeResp")
-                .put("code", 501).put("status", "NOT_SUPPORTED")
+        complete(command, baseResponse(command,
+                cancel ? "cancelUpgradeResp" : "firmwareUpgradeResp")
+                .put("code", 501)
                 .put("msg", cancel ? "当前没有可取消的真实固件升级任务"
-                        : "当前版本尚未实现固件下载安装，不会伪报accepted")
-                .put("firmwareVersion", command.optString("firmwareVersion",
-                        command.optString("version", "")))
-                .put("downloadUrl", httpGateway.absoluteUrl(command.optString("downloadUrl", ""))), false);
+                        : "当前版本尚未实现固件下载安装"), false);
     }
 
     private void handleDeviceSelfCheck(JSONObject command) throws Exception {
@@ -359,8 +305,7 @@ public final class DeviceCommandCoordinator {
                 .put("timestamp", System.currentTimeMillis());
         reportRuntimeEvent("selfCheckReport", BackendHttpGateway.DEVICE_SELF_CHECK, data);
         complete(command, baseResponse(command, "deviceSelfCheckResp")
-                .put("code", 0).put("status", "SUCCESS")
-                .put("msg", "success").put("data", data), true);
+                .put("code", 0).put("msg", "success"), true);
     }
 
     private void handleLogUploadToggle(JSONObject command) throws Exception {
@@ -371,17 +316,13 @@ public final class DeviceCommandCoordinator {
         settingsRepository.save(settings);
         stateStore.record("backend.logUpload", new JSONObject().put("enabled", enabled)
                 .put("operatorId", command.optString("operatorId", "")));
-        if (enabled) reportRuntimeEvent("logReport", BackendHttpGateway.LOG_REPORT,
-                new JSONObject().put("level", "INFO").put("tag", "LOG_UPLOAD")
-                        .put("content", "日志上传已开启")
-                        .put("timestamp", System.currentTimeMillis()));
-        complete(command, baseResponse(command, command.optString("cmd", "") + "Resp")
-                .put("code", 0).put("status", "SUCCESS").put("enabled", enabled), true);
+        // V4.1 explicitly defines no response for enableLogUpload/disableLogUpload.
+        inboundRepository.complete(command.optString("msgId", ""), null);
     }
 
     private void handleRestartApp(JSONObject command) throws Exception {
         complete(command, baseResponse(command, "restartAppResp")
-                .put("code", 0).put("status", "ACCEPTED").put("msg", "restarting"), true);
+                .put("code", 0).put("msg", "restarting"), true);
         appControl.restart(Math.max(0L, command.optLong("delayMs", 3000L)));
     }
 
@@ -444,23 +385,24 @@ public final class DeviceCommandCoordinator {
 
     private JSONObject baseResponse(JSONObject command, String responseCmd) {
         try {
-            return new JSONObject()
-                    .put("cmd", responseCmd == null || responseCmd.trim().isEmpty()
-                            ? "commandResp" : responseCmd)
-                    .put("requestMsgId", command == null ? "" : command.optString("msgId", ""))
-                    .put("deviceCode", currentDeviceCode())
-                    .put("timestamp", System.currentTimeMillis());
+            return new JSONObject().put("cmd",
+                    responseCmd == null || responseCmd.trim().isEmpty()
+                            ? "commandResp" : responseCmd);
         } catch (JSONException ignored) {
             return new JSONObject();
         }
     }
 
+    private static boolean isLogToggle(String cmd) {
+        return "enableLogUpload".equals(cmd) || "disableLogUpload".equals(cmd);
+    }
+
     private String currentDeviceCode() {
         try {
             JSONObject settings = settingsRepository.load();
-            return settings.optString("deviceCode", settings.optString("deviceId", "DEV001"));
+            return settings.optString("deviceCode", "").trim();
         } catch (Exception ignored) {
-            return "DEV001";
+            return "";
         }
     }
 

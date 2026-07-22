@@ -7,10 +7,11 @@ import java.net.URI;
 import java.util.Locale;
 
 /**
- * Normalizes the three independent backend endpoints.
+ * Normalizes three independent LOCAL endpoint settings.
  *
- * HTTP, MQTT and legacy TCP are separate configuration domains. Legacy serverAddress,
- * apiBaseUrl and mqttBrokerUrl values are accepted only as migration inputs.
+ * These field names are an Android configuration model required by the product deployment where
+ * HTTP and MQTT use different servers. They are not fields defined by /api/v1/device/config.
+ * Legacy serverAddress/apiBaseUrl/mqttBrokerUrl are accepted only as local migration inputs.
  */
 public final class BackendEndpointSettings {
     public static final String MODE_MQTT = "MQTT";
@@ -29,12 +30,13 @@ public final class BackendEndpointSettings {
         result.put("backendTransport", mode);
 
         Endpoint http = parseEndpoint(
-                firstNonBlank(result.optString("httpServerAddress", ""), result.optString("apiBaseUrl", ""),
-                        looksHttp(result.optString("serverAddress", "")) ? result.optString("serverAddress", "") : ""),
-                result.optString("httpScheme", "http"),
-                positivePort(result.opt("httpPort"), 80),
-                result.optString("httpBasePath", ""),
-                "http");
+                firstNonBlank(result.optString("httpServerAddress", ""),
+                        result.optString("apiBaseUrl", ""),
+                        looksHttp(result.optString("serverAddress", ""))
+                                ? result.optString("serverAddress", "") : ""),
+                result.optString("httpScheme", ""),
+                port(result.opt("httpPort"), 8082),
+                result.optString("httpBasePath", ""));
         result.put("httpScheme", http.scheme)
                 .put("httpServerAddress", http.host)
                 .put("httpPort", http.port)
@@ -42,11 +44,10 @@ public final class BackendEndpointSettings {
                 .put("apiBaseUrl", http.asHttpBaseUrl());
 
         Endpoint mqtt = parseEndpoint(
-                firstNonBlank(result.optString("mqttServerAddress", ""), result.optString("mqttBrokerUrl", "")),
-                result.optString("mqttScheme", "tcp"),
-                positivePort(result.opt("mqttPort"), 48419),
-                "",
-                "tcp");
+                firstNonBlank(result.optString("mqttServerAddress", ""),
+                        result.optString("mqttBrokerUrl", "")),
+                result.optString("mqttScheme", ""),
+                port(result.opt("mqttPort"), 0), "");
         result.put("mqttScheme", mqtt.scheme)
                 .put("mqttServerAddress", mqtt.host)
                 .put("mqttPort", mqtt.port)
@@ -55,7 +56,7 @@ public final class BackendEndpointSettings {
         String legacyAddress = result.optString("serverAddress", "");
         String tcpInput = firstNonBlank(result.optString("tcpServerAddress", ""),
                 looksHttp(legacyAddress) ? "" : legacyAddress);
-        Endpoint tcp = parseEndpoint(tcpInput, "tcp", positivePort(result.opt("tcpPort"), 9009), "", "tcp");
+        Endpoint tcp = parseEndpoint(tcpInput, "tcp", port(result.opt("tcpPort"), 9009), "");
         result.put("tcpServerAddress", tcp.host)
                 .put("tcpPort", tcp.port)
                 .put("serverAddress", tcp.host);
@@ -77,26 +78,27 @@ public final class BackendEndpointSettings {
         catch (JSONException ignored) { return ""; }
     }
 
-    private static Endpoint parseEndpoint(String rawValue, String configuredScheme, int configuredPort,
-                                          String configuredPath, String defaultScheme) {
+    private static Endpoint parseEndpoint(String rawValue, String configuredScheme,
+                                          int configuredPort, String configuredPath) {
         String raw = rawValue == null ? "" : rawValue.trim();
-        String scheme = lower(firstNonBlank(configuredScheme, defaultScheme));
+        String scheme = lower(configuredScheme);
         String host = "";
-        int port = configuredPort;
+        int resolvedPort = configuredPort;
         String path = normalizePath(configuredPath);
 
         if (!raw.isEmpty()) {
             try {
                 boolean explicitScheme = raw.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*");
-                String candidate = explicitScheme ? raw : defaultScheme + "://" + raw;
+                String candidate = explicitScheme ? raw
+                        : scheme.isEmpty() ? "//" + raw : scheme + "://" + raw;
                 URI uri = URI.create(candidate);
-                if (explicitScheme && uri.getScheme() != null && !uri.getScheme().trim().isEmpty()) {
-                    scheme = lower(uri.getScheme());
-                }
+                if (explicitScheme && uri.getScheme() != null) scheme = lower(uri.getScheme());
                 host = uri.getHost();
                 if (host == null || host.trim().isEmpty()) host = stripHost(raw);
-                if (uri.getPort() > 0) port = uri.getPort();
-                if (path.isEmpty() && uri.getRawPath() != null) path = normalizePath(uri.getRawPath());
+                if (uri.getPort() > 0) resolvedPort = uri.getPort();
+                if (path.isEmpty() && uri.getRawPath() != null) {
+                    path = normalizePath(uri.getRawPath());
+                }
             } catch (Exception ignored) {
                 host = stripHost(raw);
             }
@@ -105,14 +107,13 @@ public final class BackendEndpointSettings {
         if ("mqtts".equals(scheme)) scheme = "ssl";
         if (!"http".equals(scheme) && !"https".equals(scheme)
                 && !"tcp".equals(scheme) && !"ssl".equals(scheme)) {
-            scheme = defaultScheme;
+            scheme = "";
         }
-        int fallback = defaultPort(scheme);
-        if (port < 1 || port > 65535) port = fallback;
-        return new Endpoint(scheme, host == null ? "" : host.trim(), port, path);
+        if (resolvedPort < 1 || resolvedPort > 65535) resolvedPort = 0;
+        return new Endpoint(scheme, host == null ? "" : host.trim(), resolvedPort, path);
     }
 
-    private static int positivePort(Object value, int fallback) {
+    private static int port(Object value, int fallback) {
         try {
             int parsed = Integer.parseInt(String.valueOf(value));
             return parsed >= 1 && parsed <= 65535 ? parsed : fallback;
@@ -121,15 +122,8 @@ public final class BackendEndpointSettings {
         }
     }
 
-    private static int defaultPort(String scheme) {
-        if ("https".equals(scheme)) return 443;
-        if ("http".equals(scheme)) return 80;
-        if ("ssl".equals(scheme)) return 8883;
-        return 1883;
-    }
-
     private static boolean looksHttp(String value) {
-        String raw = value == null ? "" : value.trim().toLowerCase(Locale.US);
+        String raw = lower(value);
         return raw.startsWith("http://") || raw.startsWith("https://");
     }
 
@@ -184,13 +178,16 @@ public final class BackendEndpointSettings {
         }
 
         String asHttpBaseUrl() {
-            if (host.isEmpty()) return "";
-            boolean standard = ("http".equals(scheme) && port == 80) || ("https".equals(scheme) && port == 443);
+            if (host.isEmpty() || port < 1
+                    || (!"http".equals(scheme) && !"https".equals(scheme))) return "";
+            boolean standard = ("http".equals(scheme) && port == 80)
+                    || ("https".equals(scheme) && port == 443);
             return scheme + "://" + host + (standard ? "" : ":" + port) + path;
         }
 
         String asMqttUri() {
-            if (host.isEmpty()) return "";
+            if (host.isEmpty() || port < 1
+                    || (!"tcp".equals(scheme) && !"ssl".equals(scheme))) return "";
             return scheme + "://" + host + ":" + port;
         }
     }

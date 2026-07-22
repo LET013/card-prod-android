@@ -18,7 +18,7 @@ public class NativeSettingsRepository {
     private static final int CURRENT_SCHEMA = 4;
 
     private static final Set<String> INTERNAL_ONLY_KEYS = new HashSet<>(Arrays.asList(
-            "deviceToken", "runtimeToken", "mqttPassword", "signingKey", "machineId", "clientId",
+            "deviceToken", "runtimeToken", "mqttPassword", "signingKey", "machineId", "deviceId", "clientId",
             "mqttClientId", "mqttUsername", "registerCode", "registerCodeExpireTime",
             "provisionedAt", "apiBaseUrl", "mqttBrokerUrl", "serverAddress",
             "versionInfo", "forceUpdate"
@@ -85,8 +85,8 @@ public class NativeSettingsRepository {
                 .put("serialDataBits", 8)
                 .put("serialStopBits", 1)
                 .put("serialParity", "NONE")
-                .put("serialPollingEnabled", true)
-                .put("serialResponseTimeoutMs", 1500)
+                .put("serialPollingEnabled", false)
+                .put("serialResponseTimeoutMs", 100)
                 .put("serialCommandGapMs", 200)
                 .put("serialPollingIntervalMs", 5000)
                 .put("slotStatusReportIntervalMs", 10000)
@@ -109,14 +109,14 @@ public class NativeSettingsRepository {
 
                 // Runtime channel selection. HTTP is always used for provisioning/sync.
                 .put("backendTransport", BackendEndpointSettings.MODE_MQTT)
-                .put("httpScheme", "http")
-                .put("httpServerAddress", "card-test.quyohui.com")
-                .put("httpPort", 80)
+                .put("httpScheme", "")
+                .put("httpServerAddress", "")
+                .put("httpPort", 8082)
                 .put("httpBasePath", "")
                 .put("apiBaseUrl", "")
-                .put("mqttScheme", "tcp")
-                .put("mqttServerAddress", "119.146.88.108")
-                .put("mqttPort", 48419)
+                .put("mqttScheme", "")
+                .put("mqttServerAddress", "")
+                .put("mqttPort", 0)
                 .put("mqttBrokerUrl", "")
                 .put("tcpServerAddress", "")
                 .put("tcpPort", 9009)
@@ -136,7 +136,7 @@ public class NativeSettingsRepository {
                 .put("faceRecognitionThreshold", 0.8)
                 .put("faceSyncIncludeFlags", 3)
                 .put("startupDataSyncEnabled", true)
-                .put("cameraRotation", 90)
+                .put("cameraRotation", 270)
                 .put("fingerprintEnabled", false)
                 .put("fingerRecognitionThreshold", "")
                 .put("systemBiometricEnabled", true)

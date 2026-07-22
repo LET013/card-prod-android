@@ -23,8 +23,6 @@ public final class InboundCommandRepository {
     private static final String PREFS = "card_inbound_commands";
     private static final String KEY_ENTRIES = "entries";
     private static final int MAX_TERMINAL_ENTRIES = 500;
-    private static final long DEFAULT_REPLAY_WINDOW_MS = 10L * 60L * 1000L;
-    private static final long STALE_PROCESSING_MS = 5L * 60L * 1000L;
 
     public static final class BeginResult {
         public final String status;
@@ -55,10 +53,6 @@ public final class InboundCommandRepository {
         long now = System.currentTimeMillis();
         long timestamp = command.optLong("timestamp", 0L);
         if (timestamp <= 0L) return rejected("MISSING_TIMESTAMP", "后台指令缺少timestamp", msgId);
-        if (Math.abs(now - timestamp) > DEFAULT_REPLAY_WINDOW_MS) {
-            return rejected("STALE_COMMAND", "后台指令时间戳超出允许窗口", msgId);
-        }
-
         // V4.1 downlink does not require deviceCode. Reject only an explicitly supplied mismatch.
         String incomingDeviceCode = command.optString("deviceCode", "").trim();
         String localDeviceCode = expectedDeviceCode == null ? "" : expectedDeviceCode.trim();
@@ -86,11 +80,6 @@ public final class InboundCommandRepository {
             if ("COMPLETED".equals(state) || "FAILED".equals(state)) {
                 return new BeginResult(STATUS_DUPLICATE_COMPLETED, "DUPLICATE_COMMAND",
                         "指令已处理，返回缓存结果", msgId, copy(response));
-            }
-            long updatedAt = existing.optLong("updatedAt", existing.optLong("receivedAt", 0L));
-            if (updatedAt > 0L && now - updatedAt > STALE_PROCESSING_MS) {
-                return rejected("RECOVERY_REQUIRED",
-                        "指令在上次进程中未完成，禁止自动重复副作用，请查询硬件状态后人工恢复", msgId);
             }
             return new BeginResult(STATUS_DUPLICATE_PROCESSING, "COMMAND_IN_PROGRESS",
                     "相同指令正在处理中", msgId, null);

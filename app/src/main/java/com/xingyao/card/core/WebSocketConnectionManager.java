@@ -494,8 +494,7 @@ public final class WebSocketConnectionManager {
 
     private void sendLogin() throws Exception {
         send(new JSONObject().put("cmd", "login")
-                .put("data", new JSONObject().put("version", BuildConfig.VERSION_NAME)
-                        .put("ip", "127.0.0.1")));
+                .put("data", new JSONObject().put("version", BuildConfig.VERSION_NAME)));
     }
 
     private synchronized void startLoginTimeout() {
@@ -643,11 +642,8 @@ public final class WebSocketConnectionManager {
         transportMode = MODE_HTTP.equals(configuredMode) ? MODE_HTTP
                 : MODE_TCP.equals(configuredMode) ? MODE_TCP : MODE_MQTT;
 
-        String configuredClientId = optString(settings, "mqttClientId",
+        clientId = optString(settings, "mqttClientId",
                 optString(settings, "clientId", "")).trim();
-        String machineId = optString(settings, "machineId", "").trim();
-        clientId = configuredClientId.isEmpty()
-                ? "device_" + (machineId.isEmpty() ? deviceCode : machineId) : configuredClientId;
         mqttUsername = optString(settings, "mqttUsername", "").trim();
         mqttUsernameConfigured = !mqttUsername.isEmpty();
         mqttPassword = optString(settings, "mqttPassword", "");
@@ -668,12 +664,9 @@ public final class WebSocketConnectionManager {
 
     private List<String> mqttUsernameCandidates() {
         ArrayList<String> candidates = new ArrayList<>();
-        if (mqttUsernameConfigured) addUnique(candidates, mqttUsername);
-        // V4.1 does not define a username field. These compatibility candidates are retained until
-        // the broker credential contract explicitly identifies the username.
-        addUnique(candidates, deviceCode);
-        addUnique(candidates, clientId);
-        addUnique(candidates, "");
+        // V4.1 does not define MQTT username. Use an explicitly configured value only; otherwise
+        // connect without a username and record the missing contract if the broker rejects it.
+        addUnique(candidates, mqttUsernameConfigured ? mqttUsername : "");
         return candidates;
     }
 
@@ -685,8 +678,6 @@ public final class WebSocketConnectionManager {
     private String mqttAuthLabel(String username) {
         String value = username == null ? "" : username.trim();
         if (value.isEmpty()) return "none";
-        if (value.equals(deviceCode)) return "deviceCode";
-        if (value.equals(clientId)) return "clientId";
         return "configured";
     }
 

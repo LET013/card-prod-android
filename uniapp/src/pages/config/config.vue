@@ -18,8 +18,8 @@
             <input class="field-input" v-model="form.baudRate" type="number" />
           </view>
           <view class="field-row">
-            <text class="field-label">设备ID</text>
-            <input class="field-input wide" v-model.trim="form.deviceId" placeholder="留空时由 AndroidID 生成" />
+            <text class="field-label">机器标识</text>
+            <input class="field-input wide readonly" value="由 AndroidID 生成，V4.1 不允许在此猜测或覆盖" disabled />
           </view>
           <view class="field-row">
             <text class="field-label">设备编码</text>
@@ -35,7 +35,7 @@
           <view class="section-title">HTTP 配置</view>
           <text class="section-help">注册、激活、配置、员工/人脸同步和文件下载均使用此地址。</text>
           <view class="field-row">
-            <text class="field-label required">HTTP协议</text>
+            <text class="field-label required">本机HTTP协议</text>
             <view class="field-select" @click="openEditor('httpScheme')">{{ form.httpScheme || '请选择' }}</view>
           </view>
           <view class="field-row">
@@ -62,7 +62,7 @@
           <template v-if="String(form.backendTransport).toUpperCase()==='MQTT'">
             <text class="section-help">MQTT 与 HTTP 可使用完全不同的服务器。</text>
             <view class="field-row">
-              <text class="field-label required">MQTT协议</text>
+              <text class="field-label required">本机MQTT协议</text>
               <view class="field-select" @click="openEditor('mqttScheme')">{{ form.mqttScheme || '请选择' }}</view>
             </view>
             <view class="field-row">
@@ -109,7 +109,7 @@
           <view class="section-title">轮询与卡号</view>
           <view class="field-row">
             <text class="field-label">自动轮询</text>
-            <UiSwitch v-model="form.serialPollingEnabled" />
+            <input class="field-input wide readonly" value="已禁用：缺少slotId到从机地址/切组协议" disabled />
           </view>
           <view class="field-row">
             <text class="field-label required">轮询间隔(ms)</text>
@@ -120,8 +120,8 @@
             <input class="field-input wide readonly" value="待确认硬件分组/切组协议" disabled />
           </view>
           <view class="field-row">
-            <text class="field-label required">卡号解析方式</text>
-            <view class="field-select" @click="openEditor('cardNumberMode')">{{ cardModeLabel }}</view>
+            <text class="field-label">卡号解析方式</text>
+            <input class="field-input wide readonly" value="15字节ASCII（协议明确）" disabled />
           </view>
         </view>
 
@@ -189,7 +189,6 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import UiSwitch from '@/components/UiSwitch.vue'
 import ModalShell from '@/components/ModalShell.vue'
 import { appState } from '@/state/appState.js'
 import { services } from '@/services/index.js'
@@ -211,15 +210,10 @@ const descriptors = {
   mqttScheme: { title: 'MQTT协议', options: [
     { value: 'ssl', label: 'SSL / MQTTS' }, { value: 'tcp', label: 'TCP / MQTT' }
   ] },
-  cardNumberMode: { title: '卡号解析方式', options: [
-    { value: 'VISIBLE', label: '可视卡号（15字节ASCII）' },
-    { value: 'PHYSICAL', label: '物理卡号（原始字节十六进制）' }
-  ] },
   cameraRotation: { title: '摄像头旋转角度', options: [0, 90, 180, 270].map(value => ({ value, label: `${value}度` })) }
 }
 
 const transportLabel = computed(() => ({ MQTT: 'MQTT', HTTP: 'HTTP', TCP: 'TCP（兼容）' }[String(form.backendTransport || '').toUpperCase()] || '请选择'))
-const cardModeLabel = computed(() => String(form.cardNumberMode).toUpperCase() === 'PHYSICAL' ? '物理卡号' : '可视卡号')
 
 onMounted(async () => {
   const results = await Promise.allSettled([services.loadSettings(), services.getRuntime()])
@@ -284,7 +278,9 @@ const save = async () => {
       singleGroupCount: Number(form.singleGroupCount),
       serialPollingIntervalMs: Number(form.serialPollingIntervalMs),
       faceRecognitionThreshold: Number(form.faceRecognitionThreshold),
-      cardParseMode: String(form.cardNumberMode).toUpperCase() === 'PHYSICAL' ? '物理卡号' : '可视卡号'
+      serialPollingEnabled: false,
+      cardNumberMode: 'VISIBLE',
+      cardParseMode: '转可见符'
     }
     const saved = await services.saveSettings(payload)
     Object.assign(form, saved || payload)

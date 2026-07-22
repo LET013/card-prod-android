@@ -196,17 +196,9 @@ public final class DeviceDataRepository {
         if (id.isEmpty()) throw new IllegalArgumentException("employeeId is required");
         JSONObject employee = employees.get(id);
         if (employee == null) {
-            employee = new JSONObject()
-                    .put("id", id)
-                    .put("employeeId", id)
-                    .put("employeeCode", id)
-                    .put("employeeName", employeeName == null ? "" : employeeName)
-                    .put("faceRegistered", false)
-                    .put("fingerprintRegistered", false)
-                    .put("enabled", true);
-        } else {
-            employee = copy(employee);
+            throw new IllegalStateException("员工不存在，禁止仅凭本机录入创建后台员工资料");
         }
+        employee = copy(employee);
         employee.put(field, registered);
         employees.put(id, employee);
         touchAndPersist();
@@ -246,14 +238,12 @@ public final class DeviceDataRepository {
         for (int index = 0; index < items.length(); index++) {
             JSONObject item = items.optJSONObject(index);
             if (item == null) continue;
-            String employeeId = item.optString("employeeId", "").trim();
-            String key = firstKey(item, primaryKey, "id", "employeeId");
+            String key = firstKey(item, primaryKey, "id");
+            if (key.isEmpty()) continue;
             if (isDeleted(item)) {
-                if (!key.isEmpty()) target.remove(key);
-                if (!employeeId.isEmpty()) removeFeaturesForEmployee(target, employeeId);
+                target.remove(key);
                 continue;
             }
-            if (key.isEmpty()) key = "ROW-" + index + "-" + System.currentTimeMillis();
             JSONObject previous = target.get(key);
             target.put(key, merge(previous, item));
         }
@@ -266,7 +256,7 @@ public final class DeviceDataRepository {
             JSONObject item = source.optJSONObject(index);
             if (item == null) continue;
             String key = firstKey(item, preferredKeys);
-            if (key.isEmpty()) key = "ROW-" + index;
+            if (key.isEmpty()) continue;
             JSONObject previous = target.get(key);
             target.put(key, merge(previous, item));
         }
@@ -285,8 +275,7 @@ public final class DeviceDataRepository {
 
     private static boolean isDeleted(JSONObject item) {
         String status = item == null ? "" : item.optString("status", "");
-        return "1".equals(status) || "DELETED".equalsIgnoreCase(status)
-                || "DISABLED".equalsIgnoreCase(status);
+        return "1".equals(status);
     }
 
     private static void removeFeaturesForEmployee(LinkedHashMap<String, JSONObject> target,

@@ -17,7 +17,6 @@ public final class DeviceProvisioningManager {
     private static final String API_VERIFY = "/api/v1/device/verify";
     private static final String API_CONFIG = "/api/v1/device/config";
     private static final String API_AUTH_STATUS = "/api/v1/device/auth/status";
-    private static final long CREDENTIAL_REFRESH_SKEW_MS = 5L * 60L * 1000L;
 
     private final Context context;
     private final NativeSettingsRepository settingsRepository;
@@ -71,7 +70,6 @@ public final class DeviceProvisioningManager {
                 settings.optString("backendTransport", BackendEndpointSettings.MODE_MQTT));
         boolean activationRequired = forceCredentialRefresh
                 || !"ACTIVATED".equalsIgnoreCase(settings.optString("activationStatus", ""))
-                || credentialsExpired(settings)
                 || (mqttRequested && !hasMqttCredentials(settings));
         if (activationRequired) settings = performActivation(apiBaseUrl, settings);
 
@@ -189,8 +187,10 @@ public final class DeviceProvisioningManager {
         boolean authorized = data.optBoolean("authorized", false);
         return new JSONObject().put("state", authorized ? "AUTHORIZED" : "UNAUTHORIZED")
                 .put("authorized", authorized)
-                .put("authExpireTime", data.optLong("authExpireTime", 0L))
-                .put("authType", data.optString("authType", ""))
+                .put("authorizedUntil", data.optLong("authorizedUntil", 0L))
+                .put("daysRemaining", data.optLong("daysRemaining", 0L))
+                .put("features", data.optJSONArray("features") == null
+                        ? new org.json.JSONArray() : data.optJSONArray("features"))
                 .put("message", authorized ? "设备授权有效" : "设备未授权或授权已过期");
     }
 
@@ -206,7 +206,7 @@ public final class DeviceProvisioningManager {
 
     private void mergeCredentials(JSONObject settings, JSONObject data) throws JSONException {
         merge(settings, data, "mqttPassword", "signingKey", "clientId", "expireTime",
-                "deviceName", "deviceCode", "mqttUsername");
+                "deviceName", "deviceCode");
         if (!settings.optString("deviceCode", "").trim().isEmpty()) {
             settings.put("deviceId", settings.optString("deviceCode"));
         }
@@ -223,10 +223,6 @@ public final class DeviceProvisioningManager {
                 && !data.optString("clientId", "").trim().isEmpty();
     }
 
-    private static boolean credentialsExpired(JSONObject settings) {
-        long expireTime = settings == null ? 0L : settings.optLong("expireTime", 0L);
-        return expireTime > 0L && expireTime <= System.currentTimeMillis() + CREDENTIAL_REFRESH_SKEW_MS;
-    }
 
     private static void merge(JSONObject target, JSONObject source, String... keys) throws JSONException {
         if (source == null) return;

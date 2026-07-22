@@ -87,11 +87,7 @@ public final class BackendHttpGateway {
 
     public byte[] downloadBytes(String absoluteUrl, boolean withToken) throws Exception {
         JSONObject settings = settingsRepository.load();
-        String token = "";
-        if (withToken) {
-            token = settings.optString("runtimeToken", "").trim();
-            if (token.isEmpty()) token = settings.optString("deviceToken", "");
-        }
+        String token = withToken ? settings.optString("deviceToken", "") : "";
         return BackendHttpClient.downloadBytes(absoluteUrl, token);
     }
 
@@ -111,7 +107,7 @@ public final class BackendHttpGateway {
         String base = baseUrl(settings);
         boolean endpointReady = !base.isEmpty();
         boolean deviceTokenReady = !settings.optString("deviceToken", "").isEmpty();
-        boolean runtimeTokenReady = !settings.optString("runtimeToken", "").isEmpty();
+        boolean httpLoginTokenPresent = !settings.optString("runtimeToken", "").isEmpty();
         return new JSONObject()
                 .put("state", endpointReady ? deviceTokenReady ? "READY" : "PENDING_AUTH" : "NOT_CONFIGURED")
                 .put("message", !endpointReady ? "HTTP域名/IP未配置"
@@ -120,14 +116,12 @@ public final class BackendHttpGateway {
                 .put("httpServerAddress", settings.optString("httpServerAddress", ""))
                 .put("httpPort", settings.optInt("httpPort", 0))
                 .put("deviceTokenReady", deviceTokenReady)
-                .put("runtimeTokenReady", runtimeTokenReady)
+                .put("httpLoginTokenPresent", httpLoginTokenPresent)
                 .put("deviceCode", settings.optString("deviceCode", settings.optString("deviceId", "")));
     }
 
     private BackendHttpClient runtimeClient(JSONObject settings) {
-        String token = settings.optString("runtimeToken", "").trim();
-        if (token.isEmpty()) token = settings.optString("deviceToken", "");
-        return client(settings, token);
+        return deviceClient(settings);
     }
 
     private BackendHttpClient deviceClient(JSONObject settings) {
