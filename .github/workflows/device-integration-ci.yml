@@ -83,12 +83,61 @@ jobs:
           print(f'validated {len(skill_files)} repository skills')
           PY
 
+      - name: Validate three-layer boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          facade_path = Path('app/src/main/java/com/xingyao/card/core/DeviceApplicationFacade.java')
+          bridge_path = Path('app/src/main/java/com/xingyao/card/JsBridge.java')
+          state_path = Path('uniapp/src/state/appState.js')
+          services_path = Path('uniapp/src/services/index.js')
+
+          for path in [facade_path, bridge_path, state_path, services_path]:
+              assert path.is_file() and path.stat().st_size > 0, f'missing architecture file: {path}'
+
+          bridge = bridge_path.read_text(encoding='utf-8')
+          assert 'DeviceApplicationFacade' in bridge, 'JsBridge must delegate through DeviceApplicationFacade'
+          for forbidden in ['DeviceCoreService', 'NativeSettingsRepository', 'NativeAuthManager', 'SerialConnectionManager', 'WebSocketConnectionManager']:
+              assert forbidden not in bridge, f'JsBridge bypasses facade via {forbidden}'
+
+          state = state_path.read_text(encoding='utf-8')
+          for forbidden in ['uni.getStorageSync', 'uni.setStorageSync', 'card.runtime.v2', 'card.slots.v2', 'card.employees.v2']:
+              assert forbidden not in state, f'Vue business projection must not persist: {forbidden}'
+
+          services = services_path.read_text(encoding='utf-8')
+          for forbidden in [
+              'appState.employees.unshift',
+              'appState.employees = appState.employees.filter',
+              'persistEmployees',
+              'persistSlots',
+              'persistRuntime',
+              'rebuildSlots()',
+          ]:
+              assert forbidden not in services, f'Vue service mutates or persists Android-owned data: {forbidden}'
+          assert 'replaceEmployeesProjection' in services
+          assert 'replaceSlotsProjection' in services
+
+          privileged = []
+          for path in Path('uniapp/src').rglob('*'):
+              if path.suffix not in {'.js', '.vue'}:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              if 'window.android.postMessage' in text:
+                  privileged.append(path.as_posix())
+          assert privileged == ['uniapp/src/services/nativeBridge.js'], f'direct native bridge access outside adapter: {privileged}'
+          print('validated UI -> facade -> repository/communication boundaries')
+          PY
+
       - name: Validate frontend syntax
         shell: bash
         run: |
           set -euo pipefail
           node --check uniapp/src/services/nativeBridge.js
           node --check uniapp/src/services/index.js
+          node --check uniapp/src/state/appState.js
           python3 - <<'PY'
           from pathlib import Path
           for name in [
