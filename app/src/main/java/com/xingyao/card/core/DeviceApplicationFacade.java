@@ -1,17 +1,10 @@
 package com.xingyao.card.core;
 
 import com.xingyao.card.MainActivity;
-import com.xingyao.card.service.DeviceCoreService;
 
 import org.json.JSONObject;
 
-/**
- * Single Android application/data entry point exposed to the trusted WebView bridge.
- *
- * JsBridge only parses and serializes messages. Authorization, data access and device
- * commands are routed through this facade so Vue cannot address repositories, services
- * or communication managers directly.
- */
+/** Single Android data-layer entry exposed to the trusted WebView bridge. */
 public final class DeviceApplicationFacade {
     public static final class ActionResult {
         private final JSONObject data;
@@ -22,39 +15,19 @@ public final class DeviceApplicationFacade {
             this.deferred = deferred;
         }
 
-        public static ActionResult immediate(JSONObject data) {
-            return new ActionResult(data, false);
-        }
-
-        public static ActionResult deferred() {
-            return new ActionResult(new JSONObject(), true);
-        }
-
-        public JSONObject getData() {
-            return data;
-        }
-
-        public boolean isDeferred() {
-            return deferred;
-        }
+        public static ActionResult immediate(JSONObject data) { return new ActionResult(data, false); }
+        public static ActionResult deferred() { return new ActionResult(new JSONObject(), true); }
+        public JSONObject getData() { return data; }
+        public boolean isDeferred() { return deferred; }
     }
 
     public static final class FacadeException extends Exception {
         private final String code;
-
-        public FacadeException(String code, String message) {
-            super(message);
-            this.code = code;
-        }
-
+        public FacadeException(String code, String message) { super(message); this.code = code; }
         public FacadeException(String code, String message, Throwable cause) {
-            super(message, cause);
-            this.code = code;
+            super(message, cause); this.code = code;
         }
-
-        public String getCode() {
-            return code;
-        }
+        public String getCode() { return code; }
     }
 
     private final MainActivity activity;
@@ -68,19 +41,19 @@ public final class DeviceApplicationFacade {
         this.settingsRepository = new NativeSettingsRepository(activity);
     }
 
-    public ActionResult execute(String action, JSONObject payload, String requestId) throws FacadeException {
+    public ActionResult execute(String action, JSONObject payload, String requestId)
+            throws FacadeException {
         String normalizedAction = action == null ? "" : action.trim();
         JSONObject safePayload = payload == null ? new JSONObject() : payload;
-        if (normalizedAction.isEmpty()) {
-            throw new FacadeException("ACTION_REQUIRED", "原生请求缺少action");
-        }
+        if (normalizedAction.isEmpty()) throw new FacadeException("ACTION_REQUIRED", "原生请求缺少action");
         if (!NativeActionPolicy.isKnownAction(normalizedAction)) {
-            throw new FacadeException("NOT_IMPLEMENTED", "NOT_IMPLEMENTED: Android原生层未注册该动作");
+            throw new FacadeException("NOT_IMPLEMENTED", "NOT_IMPLEMENTED: Android数据层未注册该动作");
         }
 
         boolean bootstrapSettingsSave = "settings.save".equals(normalizedAction)
                 && !settingsRepository.isInitialized();
-        String permission = bootstrapSettingsSave ? null : NativeActionPolicy.requiredPermission(normalizedAction);
+        String permission = bootstrapSettingsSave ? null
+                : NativeActionPolicy.requiredPermission(normalizedAction);
         String authorizationError = authManager.authorize(permission);
         if (authorizationError != null) {
             String message = NativeAuthManager.AUTH_REQUIRED.equals(authorizationError)
@@ -94,78 +67,66 @@ public final class DeviceApplicationFacade {
             switch (normalizedAction) {
                 case "app.ready":
                     return ActionResult.immediate(new JSONObject()
-                            .put("native", true)
-                            .put("platform", "android")
-                            .put("bridgeVersion", 3)
+                            .put("native", true).put("platform", "android")
+                            .put("bridgeVersion", 4)
+                            .put("dataLayerReady", DeviceRuntimeRegistry.get() != null)
                             .put("originScoped", activity.isOriginScopedBridgeEnabled()));
                 case "settings.load":
                     return ActionResult.immediate(settingsRepository.loadForUi());
                 case "settings.save": {
                     boolean bootstrap = !settingsRepository.isInitialized();
-                    JSONObject savedSettings = settingsRepository.saveFromUi(safePayload);
-                    DeviceCoreService.configureSerial(settingsRepository.load());
-                    DeviceCoreService.recordOperation(bootstrap
-                            ? "settings.bootstrap.saved" : "settings.saved", savedSettings);
-                    return ActionResult.immediate(savedSettings);
+                    JSONObject saved = settingsRepository.saveFromUi(safePayload);
+                    DeviceDataLayer layer = runtime();
+                    layer.applySettings(settingsRepository.load());
+                    layer.recordOperation(bootstrap ? "settings.bootstrap.saved" : "settings.saved", saved);
+                    return ActionResult.immediate(saved);
                 }
                 case "auth.login": {
                     JSONObject session = authManager.login(safePayload.optString("password", ""));
                     if (session == null) throw new FacadeException("AUTH_FAILED", "密码错误");
                     return ActionResult.immediate(session);
                 }
-                case "auth.logout":
-                    authManager.logout();
-                    return success();
+                case "auth.logout": authManager.logout(); return success();
                 case "auth.changePassword":
                     if (!authManager.changePassword(safePayload.optString("role"),
                             safePayload.optString("password"))) {
                         throw new FacadeException("PASSWORD_INVALID", "请输入有效的6位密码");
                     }
                     return success();
-                case "device.snapshot":
-                    return ActionResult.immediate(DeviceCoreService.snapshot());
-                case "serial.getStatus":
-                    return ActionResult.immediate(DeviceCoreService.snapshot().getJSONObject("serial"));
+                case "device.snapshot": return ActionResult.immediate(runtime().snapshot());
+                case "serial.getStatus": return ActionResult.immediate(runtime().serialStatus());
                 case "serial.reconnect":
-                    DeviceCoreService.reconnectSerial();
-                    return ActionResult.immediate(DeviceCoreService.snapshot().getJSONObject("serial"));
+                    runtime().reconnectSerial();
+                    return ActionResult.immediate(runtime().serialStatus());
                 case "serial.setPolling":
-                    return ActionResult.immediate(DeviceCoreService.setSerialPolling(
+                    return ActionResult.immediate(runtime().setSerialPolling(
                             safePayload.optBoolean("enabled", false)));
-                case "serial.listPorts":
-                    return ActionResult.immediate(DeviceCoreService.listSerialPorts());
+                case "serial.listPorts": return ActionResult.immediate(runtime().listSerialPorts());
                 case "serial.send":
-                    return ActionResult.immediate(DeviceCoreService.sendSerial(
+                    return ActionResult.immediate(runtime().sendSerial(
                             safePayload.optString("data", ""),
                             safePayload.optString("encoding", "TEXT")));
                 case "cabinet.unlockDoor":
-                    return ActionResult.immediate(DeviceCoreService.openDoor(
+                    return ActionResult.immediate(runtime().openDoor(
                             safePayload.optInt("slotNumber", -1), true,
-                            "TAKE", "ADMIN", requestId, "UI"));
+                            "TAKE", "ADMIN", requestId, "UI", ""));
                 case "cabinet.takeCard":
-                    return ActionResult.immediate(DeviceCoreService.openDoor(
+                    return ActionResult.immediate(runtime().openDoor(
                             safePayload.optInt("slotNumber", -1), false,
-                            "TAKE", "FACE", requestId, "UI"));
+                            "TAKE", "FACE", requestId, "UI", safePayload.optString("employeeId", "")));
                 case "cabinet.returnCard":
-                    return ActionResult.immediate(DeviceCoreService.openDoor(
+                    return ActionResult.immediate(runtime().openDoor(
                             safePayload.optInt("slotNumber", -1), true,
-                            "RETURN", "ADMIN", requestId, "UI"));
+                            "RETURN", "ADMIN", requestId, "UI", safePayload.optString("employeeId", "")));
                 case "cabinet.querySlot":
-                    return ActionResult.immediate(DeviceCoreService.querySlot(
-                            safePayload.optInt("slotNumber", -1)));
+                    return ActionResult.immediate(runtime().querySlot(safePayload.optInt("slotNumber", -1)));
                 case "cabinet.readVersion":
-                    return ActionResult.immediate(DeviceCoreService.readBoardVersion(
-                            safePayload.optInt("slotNumber", -1)));
+                    return ActionResult.immediate(runtime().readBoardVersion(safePayload.optInt("slotNumber", -1)));
                 case "cabinet.unlockAll":
-                    return ActionResult.immediate(DeviceCoreService.openAllDoors(true, requestId, "UI"));
-                case "cabinet.getSlots":
-                    return ActionResult.immediate(DeviceCoreService.getSlots());
-                case "face.getStatus":
-                    return ActionResult.immediate(DeviceCoreService.snapshot()
-                            .getJSONObject("recognitionEngine"));
-                case "face.reactivate":
-                    DeviceCoreService.restartFaceRecognition();
-                    return success();
+                    return ActionResult.immediate(runtime().openAllDoors(true, requestId, "UI"));
+                case "cabinet.getSlots": return ActionResult.immediate(runtime().slots());
+                case "face.getStatus": return ActionResult.immediate(runtime().recognitionStatus());
+                case "face.reactivate": runtime().restartFaceRecognition(); return success();
                 case "face.enroll":
                     activity.startFaceEnrollment(requestId, safePayload);
                     return ActionResult.deferred();
@@ -181,22 +142,16 @@ public final class DeviceApplicationFacade {
                     activity.startFingerprintAuthentication(requestId, safePayload, false);
                     return ActionResult.deferred();
                 case "fingerprint.cancel":
-                    activity.cancelFingerprintAuthentication();
-                    return success();
-                case "socket.getStatus":
-                    return ActionResult.immediate(DeviceCoreService.snapshot().getJSONObject("socket"));
+                    activity.cancelFingerprintAuthentication(); return success();
+                case "socket.getStatus": return ActionResult.immediate(runtime().backendStatus());
                 case "employee.search":
                     return ActionResult.immediate(new JSONObject().put("employees",
-                            DeviceCoreService.searchEmployees(safePayload.optString("query", ""))));
+                            runtime().searchEmployees(safePayload.optString("query", ""))));
                 case "employee.delete":
-                    return ActionResult.immediate(DeviceCoreService.deleteEmployee(
-                            safePayload.optString("id", "")));
-                case "app.restart":
-                    activity.scheduleRecreate();
-                    return success();
+                    return ActionResult.immediate(runtime().deleteEmployee(safePayload.optString("id", "")));
+                case "app.restart": activity.scheduleRecreate(); return success();
                 default:
-                    throw new FacadeException("NOT_IMPLEMENTED",
-                            "NOT_IMPLEMENTED: Android原生层未注册该动作");
+                    throw new FacadeException("NOT_IMPLEMENTED", "NOT_IMPLEMENTED: Android数据层未注册该动作");
             }
         } catch (FacadeException error) {
             throw error;
@@ -205,13 +160,19 @@ public final class DeviceApplicationFacade {
         }
     }
 
+    private DeviceDataLayer runtime() throws FacadeException {
+        DeviceDataLayer layer = DeviceRuntimeRegistry.get();
+        if (layer == null) throw new FacadeException("DATA_LAYER_NOT_READY", "Android数据层尚未启动");
+        return layer;
+    }
+
     private ActionResult success() throws Exception {
         return ActionResult.immediate(new JSONObject().put("success", true));
     }
 
     private void recordDenied(String action, String permission, String code) {
         try {
-            DeviceCoreService.recordOperation("security.bridge.denied", new JSONObject()
+            DeviceRuntimeRegistry.record("security.bridge.denied", new JSONObject()
                     .put("action", action)
                     .put("permission", permission == null ? JSONObject.NULL : permission)
                     .put("code", code));
