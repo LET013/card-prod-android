@@ -8,6 +8,8 @@ on:
       - 'app/**'
       - 'uniapp/**'
       - 'docs/**'
+      - '.agents/**'
+      - 'AGENTS.md'
       - 'gradle/**'
       - 'gradlew'
       - 'gradlew.bat'
@@ -31,6 +33,55 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Validate Codex guidance and skills
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          required = [Path('AGENTS.md'), Path('docs/CODEX_PROJECT_GUIDE.md')]
+          for path in required:
+              assert path.is_file() and path.stat().st_size > 0, f'missing required guidance: {path}'
+
+          skill_files = sorted(Path('.agents/skills').glob('*/SKILL.md'))
+          assert skill_files, 'no repository skills found'
+          names = set()
+          for path in skill_files:
+              lines = path.read_text(encoding='utf-8').splitlines()
+              assert lines and lines[0].strip() == '---', f'missing frontmatter start: {path}'
+              try:
+                  end = lines[1:].index('---') + 1
+              except ValueError as exc:
+                  raise AssertionError(f'missing frontmatter end: {path}') from exc
+              metadata = {}
+              for line in lines[1:end]:
+                  if ':' not in line:
+                      continue
+                  key, value = line.split(':', 1)
+                  metadata[key.strip()] = value.strip()
+              name = metadata.get('name', '')
+              description = metadata.get('description', '')
+              assert name, f'missing name: {path}'
+              assert description, f'missing description: {path}'
+              assert name == path.parent.name, f'name/directory mismatch: {path}'
+              assert name not in names, f'duplicate skill name: {name}'
+              assert len(description) <= 600, f'description too long: {path}'
+              names.add(name)
+
+          expected = {
+              'card-cabinet-architecture-guardian',
+              'android-device-integration',
+              'workcard-serial-v15',
+              'backend-contract-mqtt-http',
+              'device-operation-state-machine',
+              'diagnostics-outbox',
+              'device-release-gate',
+          }
+          assert expected.issubset(names), f'missing expected skills: {sorted(expected - names)}'
+          print(f'validated {len(skill_files)} repository skills')
+          PY
 
       - name: Validate frontend syntax
         shell: bash
