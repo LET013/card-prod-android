@@ -14,8 +14,7 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.xingyao.card.R;
-import com.xingyao.card.core.ArcFaceManager;
-import com.xingyao.card.core.ArcFaceTemplateCleaner;
+import com.xingyao.card.core.FaceAiManager;
 import com.xingyao.card.core.BackendHttpGateway;
 import com.xingyao.card.core.DeviceCommandCoordinator;
 import com.xingyao.card.core.DeviceDataLayer;
@@ -46,7 +45,7 @@ public final class DeviceCoreService extends Service {
     private DeviceDataLayer dataLayer;
     private SerialConnectionManager serialManager;
     private WebSocketConnectionManager backendManager;
-    private ArcFaceManager arcFaceManager;
+    private FaceAiManager faceAiManager;
 
     @Override
     public void onCreate() {
@@ -67,7 +66,7 @@ public final class DeviceCoreService extends Service {
         BackendHttpGateway httpGateway = new BackendHttpGateway(settingsRepository);
 
         final DeviceDataLayer[] holder = new DeviceDataLayer[1];
-        serialManager = new SerialConnectionManager(this, new SerialConnectionManager.Listener() {
+        serialManager = new SerialConnectionManager(new SerialConnectionManager.Listener() {
             @Override public void onStatusChanged(JSONObject status) {
                 if (holder[0] != null) holder[0].onSerialStatus(status);
             }
@@ -94,12 +93,12 @@ public final class DeviceCoreService extends Service {
                         if (holder[0] != null) holder[0].onBackendMessage(message);
                     }
                 });
-        arcFaceManager = new ArcFaceManager(this, status -> {
+        faceAiManager = FaceAiManager.getInstance();
+        faceAiManager.init(this, status -> {
             if (holder[0] != null) holder[0].onRecognitionStatus(status);
         });
-        ArcFaceTemplateCleaner templateCleaner = new ArcFaceTemplateCleaner(this);
         DeviceDataSyncManager syncManager = new DeviceDataSyncManager(settingsRepository,
-                dataRepository, arcFaceManager, templateCleaner, httpGateway);
+                dataRepository, faceAiManager, httpGateway);
 
         DeviceDataLayer.SerialPort serialPort = new DeviceDataLayer.SerialPort() {
             @Override public JSONObject snapshot() throws JSONException { return serialManager.snapshot(); }
@@ -144,14 +143,14 @@ public final class DeviceCoreService extends Service {
                 }, Math.max(0L, delayMs));
 
         dataLayer = new DeviceDataLayer(settingsRepository, stateStore, dataRepository,
-                syncManager, serialPort, backendPort, arcFaceManager, templateCleaner, httpGateway,
+                syncManager, serialPort, backendPort, faceAiManager, httpGateway,
                 new InboundCommandRepository(this), appControl);
         holder[0] = dataLayer;
         DeviceRuntimeRegistry.install(dataLayer);
 
         serialManager.start();
         backendManager.start();
-        arcFaceManager.start();
+        faceAiManager.start();
         dataLayer.start(settings);
     }
 
@@ -172,7 +171,7 @@ public final class DeviceCoreService extends Service {
         if (current != null) current.stop();
         if (backendManager != null) backendManager.stop();
         if (serialManager != null) serialManager.stop();
-        if (arcFaceManager != null) arcFaceManager.stop();
+        if (faceAiManager != null) faceAiManager.stop();
         DeviceRuntimeRegistry.clear(current);
         dataLayer = null;
         super.onDestroy();

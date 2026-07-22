@@ -1,7 +1,7 @@
 package com.xingyao.card;
 
-import android.content.Intent;
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.fingerprint.FingerprintManager;
 import android.os.Build;
@@ -14,26 +14,38 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.util.Log;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
+import androidx.camera.camera2.Camera2Config;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.CameraXConfig;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.Preview;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.core.app.ActivityCompat;
 
 import com.xingyao.card.core.DeviceRuntimeRegistry;
 import com.xingyao.card.service.DeviceCoreService;
+import com.ai.face.faceSearch.search.FaceSearchEngine;
+import com.ai.face.core.engine.FaceAISDKEngine;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCAL_HTTP_PORT = 8088;
-    private static final int REQUEST_ARCSOFT_DEVICE_ID = 4101;
-    private static final int REQUEST_FACE_ENROLLMENT = 4102;
+    private static final int REQUEST_CAMERA = 4201;
+    private static boolean sClassesPrewarmed = false;
 
     private WebViewManager webViewManager;
     private JsBridge jsBridge;
@@ -50,18 +62,48 @@ public class MainActivity extends AppCompatActivity {
     private BiometricPrompt activeBiometricPrompt;
     private CancellationSignal activeFingerprintCancellationSignal;
 
+    // 常驻相机：始终在 face_overlay 内的 PreviewView 上运行，通过 setFaceAnalyzer 切换帧处理
+    private PreviewView mCameraPreviewView;
+    private ProcessCameraProvider mCameraProvider;
+    private Preview mCameraPreview;
+    private ImageAnalysis mCameraAnalysis;
+
+    // 人脸操作 UI（face_overlay 容器 + 控制器）
+    private FrameLayout faceOverlay;
+    private TextView tvFaceStatus;
+    private Button btnFaceCapture, btnFaceCancel;
+    private FaceEnrollmentController faceController;
+
+    private static final String TAG ="MainActivity";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Log.d(TAG, "onCreate START");
         configureFullscreen();
         setContentView(R.layout.activity_main);
+        mCameraPreviewView = findViewById(R.id.camera_preview);
+        Log.d(TAG, "onCreate startDeviceCoreService...");
         startDeviceCoreService();
         DeviceRuntimeRegistry.setUiListener(this::sendBridgeEvent);
-        requestArcSoftDevicePermission();
         initViews();
+        Log.d(TAG, "onCreate initManagers...");
         initManagers();
+        Log.d(TAG, "onCreate prewarmCameraX...");
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            prewarmCameraX();
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
+        }
+        Log.d(TAG, "onCreate prewarmFaceAI...");
+        prewarmFaceAI();
+        Log.d(TAG, "onCreate startLocalHttpServer...");
         startLocalHttpServer();
+        Log.d(TAG, "onCreate loadUniApp...");
         loadUniApp();
+        Log.d(TAG, "onCreate END");
     }
 
     private void configureFullscreen() {
@@ -83,22 +125,228 @@ public class MainActivity extends AppCompatActivity {
         ContextCompat.startForegroundService(this, serviceIntent);
     }
 
-    private void requestArcSoftDevicePermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-            DeviceRuntimeRegistry.requestFaceRestart();
-            return;
+    /**
+     * 预配置 CameraX + 后台预初始化（必须在首次 getInstance 之前调用）。
+     *
+     * P0 v9: 后台预加载 CameraX + ML Kit + Camera2 Session + GMS + Coroutines 关键类，
+     *     消除 CameraX 初始化路径上的 ART Dex 验证卡顿。
+     *     - v1: CameraX 12 类 (~300ms)
+     *     - v2: ML Kit zzix/zzhw/zzvz (~2.5s) → bind 从 2661ms→1675ms
+     *     - v3: Camera2Session 内部类 + GMS + coroutines (~1.2s)
+     *     - v4: 打地鼠 4 类 (~1.3s) → 已验证消除 ✅
+     *     - v5: 打地鼠 2 类 (~329ms) → 已验证消除 ✅
+     *     - v6: 打地鼠 2 类 (~866ms) → 已验证消除 ✅, 总计 7872ms(最佳)
+     *     - v7: 收尾 2 类 (~448ms) → 已验证消除 ✅, 总计 9030ms(GC噪声)
+     *     - v8: 打地鼠 3 类 (~387ms) → 已验证消除 ✅, 总计 8798ms(GC噪声)
+     *     - v9: 打地鼠 2 类 (zzcy + zzun, ~286ms)
+     *
+     * P2: 后台预初始化 ProcessCameraProvider，让 CameraValidator 重试（4 次 × ~1.6s
+     *     = ~6.5s）在 App 冷启动时后台完成。用户导航到人脸页面时 getInstance() 秒返。
+     *     已验证：getInstance 从 6557ms→8ms（省 99.8%）。
+     */
+    private void prewarmCameraX() {
+        CameraXConfig config = CameraXConfig.Builder.fromConfig(Camera2Config.defaultConfig())
+                .build();
+        ProcessCameraProvider.configureInstance(config);
+        Log.d(TAG, "CameraX Camera2Config 已配置");
+
+        // P0: 后台预加载 CameraX + ML Kit 关键类（一次性，消除主线程类加载卡顿）
+        if (!sClassesPrewarmed) {
+            sClassesPrewarmed = true;
+            Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                Log.d(TAG, "预加载 CameraX 关键类开始...");
+                long start = System.currentTimeMillis();
+
+                // CameraSelector + 内部类（addCameraFilter 回调所依赖的 CameraInfo）
+                Class.forName("androidx.camera.core.CameraSelector");
+                Class.forName("androidx.camera.core.CameraSelector$Builder");
+                Class.forName("androidx.camera.core.CameraInfo");
+
+                // Preview + 内部类 + SurfaceRequest（setSurfaceProvider 路径）
+                Class.forName("androidx.camera.core.Preview");
+                Class.forName("androidx.camera.core.Preview$Builder");
+                Class.forName("androidx.camera.core.SurfaceRequest");
+
+                // ImageAnalysis + 内部类 + Analyzer 接口
+                Class.forName("androidx.camera.core.ImageAnalysis");
+                Class.forName("androidx.camera.core.ImageAnalysis$Builder");
+                Class.forName("androidx.camera.core.ImageAnalysis$Analyzer");
+
+                // ImageProxy（analyzer 回调参数）
+                Class.forName("androidx.camera.core.ImageProxy");
+
+                // SafeCloseImageReaderProxy 等 bindToLifecycle 内部路径类
+                Class.forName("androidx.camera.core.ImageCapture");
+
+                // ML Kit 人脸检测关键类（bindCameraUseCases 时触发 zzix.configure 验证 ~2.5s）
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face.zzix");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face.zzhw");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face_bundled.zzvz");
+
+                // P0 v3: P2 后 bind 阶段新出现的 ART 验证类（合计 ~2.4s）
+                // - Camera2SessionOptionUnpacker.unpack         316ms
+                // - ConfigurationCompat.getLocales              330ms
+                // - BaseGmsClient.getRemoteService              200ms
+                // - zabq.zav (GMS internal)                     124ms
+                // - MainDispatcherLoader.loadMainDispatcher()   114ms
+                // - zzoe.<init> (ML Kit face)                   113ms
+                // - SynchronizedCaptureSessionBaseImpl          121ms
+                // - zzgh.configure (ML Kit common)             1230ms (analyzer 路径)
+                Class.forName("androidx.camera.camera2.internal.Camera2SessionOptionUnpacker");
+                Class.forName("androidx.camera.camera2.internal.SynchronizedCaptureSessionBaseImpl");
+                Class.forName("androidx.core.os.ConfigurationCompat");
+                Class.forName("com.google.android.gms.common.internal.BaseGmsClient");
+                Class.forName("com.google.android.gms.common.api.internal.zabq");
+                Class.forName("kotlinx.coroutines.internal.MainDispatcherLoader");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face.zzoe");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_common.zzgh");
+
+                // P0 v4: v3 消除旧验证后，代码路径变更暴露的新类（合计 ~1.3s）
+                // - zzkt.<clinit> (ML Kit face)                 459ms
+                // - zzs.zza (GMS common)                        650ms
+                // - zzb.handleMessage (GMS common)              124ms
+                // - Config.mergeOptionValue (CameraX core)        109ms
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face.zzkt");
+                Class.forName("com.google.android.gms.common.internal.zzs");
+                Class.forName("com.google.android.gms.common.internal.zzb");
+                Class.forName("androidx.camera.core.impl.Config");
+
+                // P0 v5: v4 消除旧验证后，代码路径变更暴露的新类（合计 ~329ms）
+                // - AbstractResolvableFuture$Failure.<clinit>()    107ms (concurrent.futures)
+                // - Camera2CameraCaptureResult.getAeMode()         222ms (camera2 capture result)
+                Class.forName("androidx.concurrent.futures.AbstractResolvableFuture$Failure");
+                Class.forName("androidx.camera.camera2.internal.Camera2CameraCaptureResult");
+
+                // P0 v6: v5 消除旧验证后，代码路径变更暴露的新类（合计 ~866ms）
+                // - zaad.<init>() (GMS api internal)               103ms (后台线程, 回主线程延迟阶段)
+                // - zaad.zac()  (GMS api internal)                 270ms (后台线程, 回主线程延迟阶段)
+                // - zzcw.zzk()  (ML Kit face encoder)              181ms (后台线程, 首帧后)
+                // - zzcw.zzb()  (ML Kit face encoder)              312ms (后台线程, 首帧后)
+                Class.forName("com.google.android.gms.common.api.internal.zaad");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face.zzcw");
+
+                // P0 v7: v6 消除旧验证后，代码路径变更暴露的收尾类（合计 ~448ms）
+                // - ConnectionTracker.<clinit>() (GMS common stats)  281ms (后台线程 2187, 回主线程延迟阶段)
+                // - zzew.<clinit>() (ML Kit face)                     167ms (后台线程 2181, camera open 阶段)
+                Class.forName("com.google.android.gms.common.stats.ConnectionTracker");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face.zzew");
+
+                // P0 v8: v7 消除旧验证后，代码路径变更暴露的收尾类（合计 ~387ms）
+                // - ClientSettings.getApplicableScopes() (GMS common)     134ms (后台线程 3774, 回主线程延迟阶段)
+                // - AutoBatchedLogRequestEncoder.configure() (datatransport) 151ms (后台线程 3772, 首帧后)
+                // - zzea.<clinit>() (ML Kit vision common)                 102ms (后台线程 3773, 首帧后)
+                Class.forName("com.google.android.gms.common.internal.ClientSettings");
+                Class.forName("com.google.android.datatransport.cct.internal.AutoBatchedLogRequestEncoder");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_common.zzea");
+
+                // P0 v9: v8 消除后代码路径变更暴露的收尾类（合计 ~286ms）
+                // - zzcy.<clinit>() (ML Kit vision face)              165ms (后台线程 5262, bind 阶段)
+                // - zzun.<clinit>() (ML Kit vision face bundled)      121ms (后台线程 5332, 首帧后)
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face.zzcy");
+                Class.forName("com.google.android.gms.internal.mlkit_vision_face_bundled.zzun");
+
+                Log.d(TAG, "预加载 CameraX + ML Kit 关键类完成, 耗时 " + (System.currentTimeMillis() - start) + "ms");
+            } catch (ClassNotFoundException e) {
+                Log.w(TAG, "预加载类失败: " + e.getMessage());
+            }
+        });
+        } // end if (!sClassesPrewarmed)
+
+        // P2: 后台初始化 ProcessCameraProvider，每次 onCreate 都需要重新绑定到当前 Activity 生命周期
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                Log.d(TAG, "P2 初始化 CameraProvider 开始（CameraValidator 重试在后台完成）...");
+                long start = System.currentTimeMillis();
+                ProcessCameraProvider provider = ProcessCameraProvider.getInstance(this).get();
+                Log.d(TAG, "P2 初始化 CameraProvider 完成, 耗时 " + (System.currentTimeMillis() - start) + "ms");
+
+                // Provider 就绪后，在主线程绑定摄像头到全屏 PreviewView
+                runOnUiThread(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        bindPersistentCamera(provider);
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "P2 初始化 CameraProvider 失败: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 常驻绑定摄像头到 face_overlay 容器内的 PreviewView，摄像头始终运行。
+     * FaceEnrollmentController 通过 setFaceAnalyzer / clearFaceAnalyzer 切换帧处理逻辑。
+     */
+    private void bindPersistentCamera(ProcessCameraProvider provider) {
+        if (isFinishing()) return;
+        try {
+            mCameraProvider = provider;
+
+            CameraSelector cameraSelector = new CameraSelector.Builder()
+                    .addCameraFilter(cameraInfos -> {
+                        if (cameraInfos == null || cameraInfos.isEmpty())
+                            return java.util.Collections.emptyList();
+                        return java.util.Collections.singletonList(cameraInfos.get(0));
+                    })
+                    .build();
+
+            mCameraPreview = new Preview.Builder().build();
+            mCameraPreview.setSurfaceProvider(mCameraPreviewView.getSurfaceProvider());
+
+            mCameraAnalysis = new ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setTargetResolution(new android.util.Size(640, 480))
+                    .build();
+
+            provider.unbindAll();
+            provider.bindToLifecycle(this, cameraSelector, mCameraPreview, mCameraAnalysis);
+            Log.d(TAG, "Camera bound persistently to fullscreen PreviewView");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to bind persistent camera", e);
         }
-        ActivityCompat.requestPermissions(this,
-                new String[]{Manifest.permission.READ_PHONE_STATE}, REQUEST_ARCSOFT_DEVICE_ID);
+    }
+
+    // ---- 人脸分析器切换接口，供 FaceEnrollmentController 使用 ----
+
+    public void setFaceAnalyzer(ImageAnalysis.Analyzer analyzer) {
+        if (mCameraAnalysis != null) {
+            mCameraAnalysis.clearAnalyzer();
+            mCameraAnalysis.setAnalyzer(ContextCompat.getMainExecutor(this), analyzer);
+            Log.d(TAG, "Face analyzer set on persistent camera");
+        }
+    }
+
+    public void clearFaceAnalyzer() {
+        if (mCameraAnalysis != null) {
+            mCameraAnalysis.clearAnalyzer();
+            Log.d(TAG, "Face analyzer cleared from persistent camera");
+        }
+    }
+
+    /**
+     * 后台预初始化 FaceAISDK 组件，提前触发 ML Kit DynamiteModule 加载和引擎初始化。
+     * FaceDetectorV2Jni 模型加载约 4 秒，提前初始化可减少用户进入人脸页面时的等待时间。
+     */
+    private void prewarmFaceAI() {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                Log.d(TAG, "预初始化 FaceAI SDK 开始...");
+                // 获取单例，触发底层 ML Kit Face 模块加载和 TFLite 模型初始化
+                FaceSearchEngine.getInstance();
+                FaceAISDKEngine.getInstance(this);
+                Log.d(TAG, "预初始化 FaceAI SDK 完成");
+            } catch (Exception e) {
+                Log.w(TAG, "预初始化 FaceAI SDK 失败: " + e.getMessage());
+            }
+        });
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_ARCSOFT_DEVICE_ID && grantResults.length > 0 &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            DeviceRuntimeRegistry.requestFaceRestart();
+        if (requestCode == REQUEST_CAMERA && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            prewarmCameraX();
         }
     }
 
@@ -112,6 +360,12 @@ public class MainActivity extends AppCompatActivity {
             loadingLayout.setVisibility(View.VISIBLE);
             loadUniApp();
         });
+
+        // 人脸操作覆盖层
+        faceOverlay = findViewById(R.id.face_overlay);
+        tvFaceStatus = findViewById(R.id.tvFaceStatus);
+        btnFaceCapture = findViewById(R.id.btnFaceCapture);
+        btnFaceCancel = findViewById(R.id.btnFaceCancel);
     }
 
     private void initManagers() {
@@ -181,11 +435,10 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         pendingFaceEnrollmentRequestId = requestId;
-        Intent intent = new Intent(this, FaceEnrollmentActivity.class)
-                .putExtra(FaceEnrollmentActivity.EXTRA_MODE, FaceEnrollmentActivity.MODE_ENROLL)
-                .putExtra(FaceEnrollmentActivity.EXTRA_EMPLOYEE_ID, payload.optString("employeeId", ""))
-                .putExtra(FaceEnrollmentActivity.EXTRA_EMPLOYEE_NAME, payload.optString("employeeName", ""));
-        runOnUiThread(() -> startActivityForResult(intent, REQUEST_FACE_ENROLLMENT));
+        String employeeId = payload.optString("employeeId", "");
+        String employeeName = payload.optString("employeeName", "");
+
+        runOnUiThread(() -> showFaceOverlay(true, employeeId, employeeName));
     }
 
     public void startFaceVerification(String requestId) {
@@ -194,9 +447,75 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         pendingFaceEnrollmentRequestId = requestId;
-        Intent intent = new Intent(this, FaceEnrollmentActivity.class)
-                .putExtra(FaceEnrollmentActivity.EXTRA_MODE, FaceEnrollmentActivity.MODE_VERIFY);
-        runOnUiThread(() -> startActivityForResult(intent, REQUEST_FACE_ENROLLMENT));
+
+        runOnUiThread(() -> showFaceOverlay(false, "", ""));
+    }
+
+    private void showFaceOverlay(boolean isEnroll, String faceId, String faceName) {
+        faceOverlay.bringToFront();
+        faceOverlay.setVisibility(View.VISIBLE);
+
+        faceController = new FaceEnrollmentController(this, isEnroll, faceId, faceName,
+                tvFaceStatus, btnFaceCapture, btnFaceCancel, createFaceResultCallback());
+        faceController.start();
+    }
+
+    private void hideFaceOverlay() {
+        if (faceController != null) {
+            faceController.stop();
+            faceController = null;
+        }
+        faceOverlay.setVisibility(View.INVISIBLE);
+        webViewContainer.bringToFront();
+    }
+
+    private FaceEnrollmentController.FaceResultCallback createFaceResultCallback() {
+        return new FaceEnrollmentController.FaceResultCallback() {
+            @Override
+            public void onFaceEnrolled(String faceId, String faceFeature, float score) {
+                String reqId = consumeFaceRequestId();
+                hideFaceOverlay();
+                if (reqId == null) return;
+                try {
+                    JSONObject data = DeviceRuntimeRegistry.require()
+                            .completeFaceEnrollment(faceId, "", faceFeature, score);
+                    sendBridgeResponse(new JSONObject().put("type", "response")
+                            .put("requestId", reqId).put("success", true).put("data", data));
+                } catch (Exception error) {
+                    sendBridgeError(reqId, "FACE_ENROLLMENT_FAILED", safeMessage(error));
+                }
+            }
+
+            @Override
+            public void onFaceVerified(String faceId, float score) {
+                String reqId = consumeFaceRequestId();
+                hideFaceOverlay();
+                if (reqId == null) return;
+                try {
+                    JSONObject data = DeviceRuntimeRegistry.require()
+                            .completeFaceVerification(faceId, score);
+                    sendBridgeResponse(new JSONObject().put("type", "response")
+                            .put("requestId", reqId).put("success", true).put("data", data));
+                } catch (Exception error) {
+                    sendBridgeError(reqId, "FACE_VERIFICATION_FAILED", safeMessage(error));
+                }
+            }
+
+            @Override
+            public void onCancelled() {
+                String reqId = consumeFaceRequestId();
+                hideFaceOverlay();
+                if (reqId != null) {
+                    sendBridgeError(reqId, "FACE_CANCELLED", "已取消人脸操作");
+                }
+            }
+        };
+    }
+
+    private String consumeFaceRequestId() {
+        String reqId = pendingFaceEnrollmentRequestId;
+        pendingFaceEnrollmentRequestId = null;
+        return reqId;
     }
 
     /**
@@ -372,14 +691,8 @@ public class MainActivity extends AppCompatActivity {
                     .put("deviceBound", true)
                     .put("message", enrollment ? "本机系统指纹授权成功" : "系统指纹验证成功");
             DeviceRuntimeRegistry.record("biometric.fingerprint." + operation.toLowerCase(), response);
-            if (enrollment) {
-                try {
-                    DeviceRuntimeRegistry.require().markFingerprintAuthorized(employeeId, employeeName);
-                } catch (Exception error) {
-                    DeviceRuntimeRegistry.record("biometric.fingerprint.employeeUpdateFailed",
-                            new JSONObject().put("message", error.getMessage()));
-                }
-            }
+            if (enrollment) DeviceRuntimeRegistry.require()
+                    .markFingerprintAuthorized(employeeId, employeeName);
             sendFingerprintEvent("SUCCESS", response.optString("message"), operation, 0);
             sendBridgeResponse(new JSONObject().put("type", "response").put("requestId", completedRequestId)
                     .put("success", true).put("data", response));
@@ -410,6 +723,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private static String safeMessage(Throwable error) {
+        if (error == null) return "unknown";
+        String value = error.getMessage();
+        return value == null || value.trim().isEmpty()
+                ? error.getClass().getSimpleName() : value;
+    }
+
     private static String fingerprintAvailabilityMessage(int availability) {
         switch (availability) {
             case BiometricManager.BIOMETRIC_SUCCESS: return "本机系统生物认证可用";
@@ -418,24 +738,6 @@ public class MainActivity extends AppCompatActivity {
             case BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED: return "请先在系统设置中录入指纹";
             case BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED: return "系统安全更新后才能使用指纹";
             default: return "本机系统生物认证不可用";
-        }
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_FACE_ENROLLMENT || pendingFaceEnrollmentRequestId == null) return;
-        String requestId = pendingFaceEnrollmentRequestId;
-        pendingFaceEnrollmentRequestId = null;
-        String payload = data == null ? "" : data.getStringExtra(FaceEnrollmentActivity.EXTRA_MESSAGE);
-        if (resultCode == RESULT_OK) {
-            try {
-                sendBridgeResponse(new JSONObject().put("type", "response").put("requestId", requestId)
-                        .put("success", true).put("data", new JSONObject(payload)));
-            } catch (JSONException error) {
-                sendBridgeError(requestId, "FACE_ENROLLMENT_FAILED", error.getMessage());
-            }
-        } else {
-            sendBridgeError(requestId, "FACE_ENROLLMENT_CANCELLED", payload == null || payload.isEmpty() ? "已取消人脸注册" : payload);
         }
     }
 
@@ -468,6 +770,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         DeviceRuntimeRegistry.setUiListener(null);
+        if (faceController != null) faceController.stop();
+        if (mCameraProvider != null) mCameraProvider.unbindAll();
         stopLocalHttpServer();
         if (webViewManager != null) webViewManager.destroy();
         super.onDestroy();

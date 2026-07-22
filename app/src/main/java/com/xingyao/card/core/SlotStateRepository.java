@@ -173,9 +173,7 @@ public final class SlotStateRepository {
         slot.put("slotNumber", slotNumber)
                 .put("displayNumber", String.format(Locale.US, "%02d", slotNumber))
                 .put("groupNumber", groupNumber)
-                .put("groupSlotNumber", groupSlotNumber)
-                .put("boardAddress", groupSlotNumber)
-                .put("boardAddressLabel", "BOARD-" + String.format(Locale.US, "%02d", groupSlotNumber));
+                .put("groupSlotNumber", groupSlotNumber);
     }
 
     private static void copyFields(JSONObject source, JSONObject target) throws JSONException {

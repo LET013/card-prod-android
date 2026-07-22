@@ -44,6 +44,17 @@ public final class DeviceDataRepository {
         return mapValues(employees);
     }
 
+    public synchronized boolean hasEmployee(String id) {
+        String target = id == null ? "" : id.trim();
+        return !target.isEmpty() && findEmployeeKey(target) != null;
+    }
+
+    public synchronized JSONObject employee(String id) throws JSONException {
+        String target = id == null ? "" : id.trim();
+        String key = findEmployeeKey(target);
+        return key == null ? null : copy(employees.get(key));
+    }
+
     public synchronized JSONArray searchEmployees(String query) throws JSONException {
         String keyword = query == null ? "" : query.trim().toLowerCase(Locale.US);
         JSONArray result = new JSONArray();

@@ -1,5 +1,7 @@
 package com.xingyao.card.core;
 
+import android.graphics.Bitmap;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -43,8 +45,7 @@ public final class DeviceDataLayer {
     private final DeviceDataSyncManager syncManager;
     private final SerialPort serialPort;
     private final BackendPort backendPort;
-    private final ArcFaceManager arcFaceManager;
-    private final ArcFaceTemplateCleaner templateCleaner;
+    private final FaceAiManager faceAiManager;
     private final BackendHttpGateway httpGateway;
     private final DeviceCommandCoordinator commandCoordinator;
     private final DeviceOperationEngine operationEngine;
@@ -63,8 +64,7 @@ public final class DeviceDataLayer {
                            DeviceDataSyncManager syncManager,
                            SerialPort serialPort,
                            BackendPort backendPort,
-                           ArcFaceManager arcFaceManager,
-                           ArcFaceTemplateCleaner templateCleaner,
+                           FaceAiManager faceAiManager,
                            BackendHttpGateway httpGateway,
                            InboundCommandRepository inboundRepository,
                            DeviceCommandCoordinator.AppControl appControl) {
@@ -74,8 +74,7 @@ public final class DeviceDataLayer {
         this.syncManager = syncManager;
         this.serialPort = serialPort;
         this.backendPort = backendPort;
-        this.arcFaceManager = arcFaceManager;
-        this.templateCleaner = templateCleaner;
+        this.faceAiManager = faceAiManager;
         this.httpGateway = httpGateway;
         this.operationEngine = new DeviceOperationEngine(new DeviceOperationEngine.SerialGateway() {
             @Override public JSONObject openDoor(int slotNumber, boolean administrator) throws Exception {
@@ -102,7 +101,7 @@ public final class DeviceDataLayer {
         catch (Exception ignored) { }
         try { stateStore.updateSection("http", "http.statusChanged", httpGateway.snapshot()); }
         catch (Exception ignored) { }
-        try { stateStore.updateSection("recognitionEngine", "recognition.statusChanged", arcFaceManager.snapshot()); }
+        try { stateStore.updateSection("recognitionEngine", "recognition.statusChanged", faceAiManager.snapshot()); }
         catch (Exception ignored) { }
         refreshSyncSection();
         startSlotReporter(safeSettings);
@@ -146,7 +145,7 @@ public final class DeviceDataLayer {
 
     public JSONObject deleteEmployee(String id) throws JSONException {
         String employeeId = stateStore.deleteEmployee(id);
-        if (!employeeId.isEmpty()) templateCleaner.deleteTemplate(employeeId);
+        if (!employeeId.isEmpty()) faceAiManager.deleteTemplate(employeeId);
         return new JSONObject().put("success", !employeeId.isEmpty())
                 .put("id", id).put("employeeId", employeeId);
     }
@@ -221,35 +220,63 @@ public final class DeviceDataLayer {
     }
 
     public void restartFaceRecognition() {
-        if (!stopped && arcFaceManager != null) arcFaceManager.restart();
+        if (!stopped && faceAiManager != null) faceAiManager.restart();
     }
 
-    public JSONObject enrollFace(String employeeId, String employeeName, byte[] frame,
-                                 int width, int height) throws Exception {
-        arcFaceManager.awaitReady(8000L);
-        JSONObject result = arcFaceManager.enrollNv21(employeeId, employeeName, frame, width, height);
-        dataRepository.markFaceRegistered(employeeId, employeeName, true);
+    public String extractFaceFeature(Bitmap bitmap) {
+        return faceAiManager.extractFaceFeature(bitmap);
+    }
+
+    public float faceRecognitionThreshold() {
+        try {
+            double value = settingsRepository.load().optDouble("faceRecognitionThreshold", 0.8D);
+            return (float) Math.max(0D, Math.min(1D, value));
+        } catch (Exception ignored) {
+            return 0.8F;
+        }
+    }
+
+    public JSONObject completeFaceEnrollment(String employeeId, String employeeName,
+                                             String faceFeature, float score) throws Exception {
+        String id = employeeId == null ? "" : employeeId.trim();
+        if (!dataRepository.hasEmployee(id)) {
+            throw new IllegalStateException("员工不存在，禁止仅凭本机人脸录入创建后台员工资料");
+        }
+        JSONObject employee = dataRepository.employee(id);
+        String resolvedName = employeeName == null || employeeName.trim().isEmpty()
+                ? employee == null ? "" : employee.optString("employeeName", "")
+                : employeeName.trim();
+        faceAiManager.awaitReady(8000L);
+        JSONObject result = faceAiManager.enrollFeature(id, resolvedName, faceFeature, "LOCAL_CAMERA")
+                .put("similarity", score).put("engine", "FaceAISDK");
+        dataRepository.markFaceRegistered(id, resolvedName, true);
         stateStore.record("biometric.face.enrolled", result);
         stateStore.emit("sync.employeeChanged", new JSONObject()
-                .put("employeeId", employeeId).put("faceRegistered", true));
+                .put("employeeId", id).put("faceRegistered", true));
         return result;
     }
 
-    public JSONObject verifyFace(byte[] frame, int width, int height) throws Exception {
-        arcFaceManager.awaitReady(8000L);
-        JSONObject result = arcFaceManager.verifyNv21(frame, width, height);
-        if (result.optBoolean("success", false)) {
-            int slotNumber = stateStore.pickTakeSlot();
-            if (slotNumber < 1) {
-                result.put("doorOpen", false).put("status", "NO_AVAILABLE_CARD")
-                        .put("message", "人脸识别成功，但当前没有可取卡槽");
-                stateStore.record("biometric.face.noAvailableCard", result);
-                return result;
+    public JSONObject completeFaceVerification(String employeeId, float score) throws Exception {
+        String id = employeeId == null ? "" : employeeId.trim();
+        if (!dataRepository.hasEmployee(id)) {
+            throw new IllegalStateException("FaceAISDK识别结果没有对应的Android员工数据：" + id);
+        }
+        JSONObject result = new JSONObject().put("success", true)
+                .put("employeeId", id).put("similarity", score).put("engine", "FaceAISDK");
+        int slotNumber = stateStore.pickTakeSlot();
+        if (slotNumber < 1) {
+            result.put("doorOpen", false).put("status", "NO_AVAILABLE_CARD")
+                    .put("message", "人脸识别成功，但当前没有已确认可取的卡槽");
+        } else {
+            try {
+                JSONObject door = openDoor(slotNumber, false, "TAKE", "FACE",
+                        "", "FACE", id);
+                result.put("doorOpen", true).put("slotNumber", slotNumber).put("door", door);
+            } catch (IllegalStateException topologyError) {
+                result.put("doorOpen", false).put("slotNumber", slotNumber)
+                        .put("status", "SERIAL_TOPOLOGY_UNCONFIRMED")
+                        .put("message", topologyError.getMessage());
             }
-            String employeeId = result.optString("employeeId", "");
-            JSONObject door = openDoor(slotNumber, false, "TAKE", "FACE", "", "FACE", employeeId);
-            result.put("slotNumber", slotNumber).put("doorOpen", true).put("door", door)
-                    .put("operationId", door.optString("operationId", ""));
         }
         stateStore.record("biometric.face.verified", result);
         return result;
@@ -360,9 +387,9 @@ public final class DeviceDataLayer {
                     .put("faceSyncVersion", snapshot.optLong("faceSyncVersion", 0L))
                     .put("fingerSyncVersion", snapshot.optLong("fingerSyncVersion", 0L))
                     .put("updatedAt", snapshot.optLong("updatedAt", 0L));
-            if (arcFaceManager != null) {
+            if (faceAiManager != null) {
                 sync.put("faceTemplateCount",
-                        arcFaceManager.templateSummary().optInt("templateCount", 0));
+                        faceAiManager.templateSummary().optInt("templateCount", 0));
             }
             stateStore.updateSection("sync", "sync.statusChanged", sync);
         } catch (Exception error) {

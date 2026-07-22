@@ -1,0 +1,3 @@
+# ninja log v5
+0	42	1784763722091174798	CMakeFiles/SerialPort.dir/SerialPort.c.o	3344e87c45877c5e
+42	55	1784763722104174937	/home/runner/work/card-prod-android/card-prod-android/app/build/intermediates/cxx/Debug/2u1a1669/obj/armeabi-v7a/libSerialPort.so	cc713fc484827cb3

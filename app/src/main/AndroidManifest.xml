@@ -11,7 +11,6 @@
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application
         android:allowBackup="true"
@@ -23,7 +22,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.UniAppDemo"
         tools:targetApi="31">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -33,11 +32,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".FaceEnrollmentActivity"
-            android:screenOrientation="portrait" />
-
 
         <service
             android:name=".service.DeviceCoreService"
@@ -55,5 +49,4 @@
             </intent-filter>
         </receiver>
     </application>
-
 </manifest>

@@ -51,18 +51,18 @@ const withFingerprintProgress = async (operation, request, onProgress) => {
 }
 
 const normalizeNativeEmployees = (items = []) => (Array.isArray(items) ? items : []).map((item, index) => ({
-  id: String(item.id || item.employeeId || item.employeeCode || `EMP-${index}`),
+  id: String(item.employeeId || item.id || ''),
   employeeId: String(item.employeeId || item.id || ''),
-  employeeCode: String(item.employeeCode || item.employeeId || ''),
+  employeeCode: String(item.employeeCode || ''),
   employeeName: String(item.employeeName || item.name || ''),
   cardNo: item.cardNo || '',
   department: item.department || '',
   position: item.position || '',
-  avatarUrl: item.avatarUrl || item.faceImageUrl || '/static/avatars/employee-1.jpg',
+  avatarUrl: item.avatarUrl || item.faceImageUrl || '',
   faceRegistered: item.faceRegistered === true || item.faceRegistered === '1',
   fingerprintRegistered: item.fingerprintRegistered === true || item.fingerRegistered === '1',
   enabled: item.enabled !== false && item.status !== '1',
-  deviceIds: item.deviceIds || [appState.settings.deviceId || appState.settings.deviceCode]
+  deviceIds: Array.isArray(item.deviceIds) ? item.deviceIds : []
 }))
 
 const applyNativeEmployees = (items = []) => replaceEmployeesProjection(normalizeNativeEmployees(items))

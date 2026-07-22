@@ -15,23 +15,20 @@ public final class DeviceDataSyncManager {
 
     private final NativeSettingsRepository settingsRepository;
     private final DeviceDataRepository dataRepository;
-    private final ArcFaceManager arcFaceManager;
-    private final ArcFaceTemplateCleaner templateCleaner;
+    private final FaceAiManager faceAiManager;
     private final BackendHttpGateway httpGateway;
 
     public DeviceDataSyncManager(NativeSettingsRepository settingsRepository,
                                  DeviceDataRepository dataRepository,
-                                 ArcFaceManager arcFaceManager,
-                                 ArcFaceTemplateCleaner templateCleaner,
+                                 FaceAiManager faceAiManager,
                                  BackendHttpGateway httpGateway) {
         if (settingsRepository == null) throw new IllegalArgumentException("settingsRepository is required");
         if (dataRepository == null) throw new IllegalArgumentException("dataRepository is required");
-        if (templateCleaner == null) throw new IllegalArgumentException("templateCleaner is required");
+        if (faceAiManager == null) throw new IllegalArgumentException("faceAiManager is required");
         if (httpGateway == null) throw new IllegalArgumentException("httpGateway is required");
         this.settingsRepository = settingsRepository;
         this.dataRepository = dataRepository;
-        this.arcFaceManager = arcFaceManager;
-        this.templateCleaner = templateCleaner;
+        this.faceAiManager = faceAiManager;
         this.httpGateway = httpGateway;
     }
 
@@ -182,11 +179,8 @@ public final class DeviceDataSyncManager {
             if (source == null) continue;
             String employeeId = source.optString("employeeId", "").trim();
             JSONObject item = new JSONObject(source.toString());
-            if (!employeeId.isEmpty()) {
-                item.put("id", employeeId).put("employeeId", employeeId);
-            } else if (!source.optString("employeeCode", "").trim().isEmpty()) {
-                item.put("id", source.optString("employeeCode"));
-            }
+            if (employeeId.isEmpty()) continue;
+            item.put("id", employeeId).put("employeeId", employeeId);
             if (source.has("employeeName")) item.put("employeeName", source.optString("employeeName", ""));
             String avatar = firstFaceImageForEmployee(faces, employeeId, apiBaseUrl);
             if (!avatar.isEmpty()) item.put("avatarUrl", avatar);
@@ -217,23 +211,22 @@ public final class DeviceDataSyncManager {
 
     private JSONObject importFaceTemplates(JSONArray faces, JSONArray employees, boolean full)
             throws JSONException {
-        JSONObject result = new JSONObject().put("enabled", arcFaceManager != null)
+        JSONObject result = new JSONObject().put("enabled", faceAiManager != null)
                 .put("successCount", 0).put("failedCount", 0)
                 .put("deletedCount", 0).put("failures", new JSONArray());
-        if (arcFaceManager == null) {
+        if (faceAiManager == null) {
             return result.put("failedCount", faces == null ? 0 : faces.length())
-                    .put("message", "虹软人脸引擎未接入");
+                    .put("message", "FaceAISDK未接入");
         }
-        try { arcFaceManager.awaitReady(8000L); }
+        try { faceAiManager.awaitReady(8000L); }
         catch (Exception error) {
             return result.put("failedCount", faces == null ? 0 : faces.length())
-                    .put("message", "虹软人脸引擎未就绪：" + safeMessage(error));
+                    .put("message", "FaceAISDK未就绪：" + safeMessage(error));
         }
 
         int successCount = 0;
         int deletedCount = 0;
         JSONArray failures = new JSONArray();
-        java.util.HashSet<String> activeEmployeeIds = new java.util.HashSet<>();
         for (int index = 0; faces != null && index < faces.length(); index++) {
             JSONObject face = faces.optJSONObject(index);
             if (face == null) continue;
@@ -244,14 +237,13 @@ public final class DeviceDataSyncManager {
             }
             if (isDisabled(face)) {
                 try {
-                    templateCleaner.deleteTemplate(employeeId);
+                    faceAiManager.deleteTemplate(employeeId);
                     deletedCount++;
                 } catch (Exception error) {
                     failures.put(failure(face, safeMessage(error)));
                 }
                 continue;
             }
-            activeEmployeeIds.add(employeeId);
             String imageUrl = face.optString("faceImageUrl", face.optString("faceImage", ""));
             String employeeName = employeeName(employees, employeeId);
             String feature = normalizeFaceFeatureValue(face);
@@ -269,21 +261,18 @@ public final class DeviceDataSyncManager {
             }
             try {
                 if (!feature.isEmpty()) {
-                    arcFaceManager.enrollFeature(employeeId, employeeName, feature, imageUrl);
+                    faceAiManager.enrollFeature(employeeId, employeeName, feature, imageUrl);
                 } else if (!imageBase64.isEmpty()) {
-                    arcFaceManager.enrollImage(employeeId, employeeName,
+                    faceAiManager.enrollImage(employeeId, employeeName,
                             decodeBase64(imageBase64), imageUrl);
                 } else {
-                    arcFaceManager.enrollImage(employeeId, employeeName,
+                    faceAiManager.enrollImage(employeeId, employeeName,
                             httpGateway.downloadBytes(imageUrl, true), imageUrl);
                 }
                 successCount++;
             } catch (Exception error) {
                 failures.put(failure(face, safeMessage(error)).put("imageUrl", imageUrl));
             }
-        }
-        if (full && failures.length() == 0) {
-            deletedCount += templateCleaner.deleteTemplatesNotIn(activeEmployeeIds);
         }
         return result.put("successCount", successCount)
                 .put("deletedCount", deletedCount)
@@ -298,7 +287,7 @@ public final class DeviceDataSyncManager {
         for (int index = 0; index < deletedEmployeeIds.length(); index++) {
             String id = String.valueOf(deletedEmployeeIds.opt(index)).trim();
             if (id.isEmpty()) continue;
-            templateCleaner.deleteTemplate(id);
+            faceAiManager.deleteTemplate(id);
         }
     }
 
