@@ -1,115 +1,187 @@
 <template>
-  <view class="page-root config-page">
-    <view class="config-scroll">
-      <view class="config-content">
-        <view class="brand-header">
-          <view class="logo-box"><AppLogo /></view>
-          <view class="brand-copy">
-            <text class="brand-title">工作卡柜</text>
-            <text class="brand-subtitle">卡柜号：{{ form.cabinetNumber }}</text>
+  <view class="page-root settings-page">
+    <view class="settings-panel">
+      <view class="panel-header">
+        <text class="panel-title">设备配置</text>
+        <text class="close-button" @click="goBack">×</text>
+      </view>
+
+      <scroll-view class="settings-scroll" scroll-y>
+        <view class="section">
+          <view class="section-title">设备与串口</view>
+          <view class="field-row">
+            <text class="field-label required">串口设备</text>
+            <input class="field-input wide" v-model.trim="form.serialPort" placeholder="例如 /dev/ttyS5" />
+          </view>
+          <view class="field-row">
+            <text class="field-label required">波特率</text>
+            <input class="field-input" v-model="form.baudRate" type="number" />
+          </view>
+          <view class="field-row">
+            <text class="field-label">设备ID</text>
+            <input class="field-input wide" v-model.trim="form.deviceId" placeholder="留空时由 AndroidID 生成" />
+          </view>
+          <view class="field-row">
+            <text class="field-label">设备编码</text>
+            <input class="field-input wide readonly" :value="form.deviceCode || '注册后由服务端下发'" disabled />
+          </view>
+          <view class="field-row">
+            <text class="field-label">激活码</text>
+            <input class="field-input wide" v-model.trim="form.activationCode" placeholder="仅待激活设备需要" />
           </view>
         </view>
 
-        <view class="four-row first-row">
-          <input class="dark-box short-box" v-model="form.serialPort" />
-          <input class="dark-box" v-model="form.serialExtra" />
-          <input class="dark-box short-box" v-model="form.baudRate" type="number" />
-          <input class="dark-box" v-model="form.baudExtra" />
-        </view>
-
-        <view class="four-row">
-          <view class="dark-box label-box">单组数量</view>
-          <input class="dark-box" v-model="form.singleGroupCount" type="number" />
-          <view class="dark-box label-box">总体数量</view>
-          <input class="dark-box" v-model="form.totalCount" type="number" />
-        </view>
-
-        <view class="parse-row">
-          <view class="plain-setting clickable" @click="openEditor('cardParseMode')">卡号解析：{{ form.cardParseMode }}</view>
-          <view class="polling-setting">
-            <text>轮询方式：单组轮询</text>
-            <UiSwitch v-model="form.singleGroupPollingEnabled" />
+        <view class="section">
+          <view class="section-title">HTTP 配置</view>
+          <text class="section-help">注册、激活、配置、员工/人脸同步和文件下载均使用此地址。</text>
+          <view class="field-row">
+            <text class="field-label required">HTTP协议</text>
+            <view class="field-select" @click="openEditor('httpScheme')">{{ form.httpScheme || '请选择' }}</view>
+          </view>
+          <view class="field-row">
+            <text class="field-label required">HTTP域名/IP</text>
+            <input class="field-input wide" v-model.trim="form.httpServerAddress" placeholder="例如 api.example.com" />
+          </view>
+          <view class="field-row">
+            <text class="field-label required">HTTP端口</text>
+            <input class="field-input" v-model="form.httpPort" type="number" />
+          </view>
+          <view class="field-row">
+            <text class="field-label">基础路径</text>
+            <input class="field-input wide" v-model.trim="form.httpBasePath" placeholder="通常留空，例如 /prod" />
           </view>
         </view>
 
-        <view class="full-row">
-          <view class="dark-box label-box">设备ID</view>
-          <input class="dark-box" v-model="form.deviceId" />
-        </view>
-        <view class="full-row">
-          <view class="dark-box label-box">设备编码</view>
-          <input class="dark-box" v-model="form.deviceCode" placeholder="注册后自动写入" />
-        </view>
-        <view class="full-row">
-          <view class="dark-box label-box">激活码</view>
-          <input class="dark-box" v-model="form.activationCode" />
-        </view>
-        <view class="full-row server-row">
-          <view class="dark-box label-box">API地址</view>
-          <input class="dark-box" v-model="form.apiBaseUrl" />
-        </view>
-        <view class="full-row server-row">
-          <view class="dark-box label-box">服务器IP</view>
-          <input class="dark-box" v-model="form.serverAddress" />
-        </view>
-        <text class="server-help">*API地址用于HTTP注册激活，测试环境：http://card-test.quyohui.com</text>
+        <view class="section">
+          <view class="section-title">实时通信配置</view>
+          <view class="field-row">
+            <text class="field-label required">通信方式</text>
+            <view class="field-select" @click="openEditor('backendTransport')">{{ transportLabel }}</view>
+          </view>
 
-        <view class="four-row port-row">
-          <view class="dark-box label-box no-wrap">通信方式</view>
-          <view class="dark-box clickable" @click="openEditor('backendTransport')">{{ form.backendTransport }}</view>
-          <view class="dark-box label-box no-wrap">MQTT端口</view>
-          <input class="dark-box" v-model="form.mqttPort" type="number" />
-        </view>
-
-        <view class="four-row port-row">
-          <view class="dark-box label-box no-wrap">TCP端口</view>
-          <input class="dark-box" v-model="form.tcpPort" type="number" />
-          <view class="dark-box label-box no-wrap">HTTP端口</view>
-          <input class="dark-box" v-model="form.httpPort" type="number" />
-        </view>
-
-        <view class="function-area">
-          <view class="full-param clickable" @click="openEditor('faceRecognitionThreshold')">人脸识别阈值：{{ form.faceRecognitionThreshold }}</view>
-          <view v-for="row in parameterRows" :key="row.left.key" class="param-pair">
-            <view class="param-left clickable" @click="openEditor(row.left.key)">{{ row.left.label }}：{{ row.left.value }}</view>
-            <view class="param-right">
-              <text>{{ row.right.label }}</text>
-              <UiSwitch v-model="form[row.right.key]" />
+          <template v-if="String(form.backendTransport).toUpperCase()==='MQTT'">
+            <text class="section-help">MQTT 与 HTTP 可使用完全不同的服务器。</text>
+            <view class="field-row">
+              <text class="field-label required">MQTT协议</text>
+              <view class="field-select" @click="openEditor('mqttScheme')">{{ form.mqttScheme || '请选择' }}</view>
             </view>
+            <view class="field-row">
+              <text class="field-label required">MQTT域名/IP</text>
+              <input class="field-input wide" v-model.trim="form.mqttServerAddress" placeholder="例如 mqtt.example.com" />
+            </view>
+            <view class="field-row">
+              <text class="field-label required">MQTT端口</text>
+              <input class="field-input" v-model="form.mqttPort" type="number" />
+            </view>
+          </template>
+
+          <template v-else-if="String(form.backendTransport).toUpperCase()==='TCP'">
+            <text class="section-help warning">TCP 是旧版兼容模式；新后端实时指令优先使用 MQTT。</text>
+            <view class="field-row">
+              <text class="field-label required">TCP域名/IP</text>
+              <input class="field-input wide" v-model.trim="form.tcpServerAddress" placeholder="例如 192.168.1.10" />
+            </view>
+            <view class="field-row">
+              <text class="field-label required">TCP端口</text>
+              <input class="field-input" v-model="form.tcpPort" type="number" />
+            </view>
+          </template>
+
+          <template v-else>
+            <text class="section-help warning">HTTP 模式支持登录、心跳和上报；文档没有 HTTP 下行指令接口，因此远程开门不可用。</text>
+          </template>
+        </view>
+
+        <view class="section">
+          <view class="section-title">卡位配置</view>
+          <view class="field-row">
+            <text class="field-label required">卡位总数</text>
+            <input class="field-input" v-model="form.totalCount" type="number" />
+          </view>
+          <view class="field-row">
+            <text class="field-label required">分组大小</text>
+            <input class="field-input" v-model="form.singleGroupCount" type="number" />
+          </view>
+          <text class="section-help warning">分组大小当前只用于界面分组和批次展示，不再把 100 个卡位取模映射到少量串口地址。</text>
+        </view>
+
+        <view class="section">
+          <view class="section-title">轮询与卡号</view>
+          <view class="field-row">
+            <text class="field-label">自动轮询</text>
+            <UiSwitch v-model="form.serialPollingEnabled" />
+          </view>
+          <view class="field-row">
+            <text class="field-label required">轮询间隔(ms)</text>
+            <input class="field-input" v-model="form.serialPollingIntervalMs" type="number" />
+          </view>
+          <view class="field-row">
+            <text class="field-label">轮询方式</text>
+            <input class="field-input wide readonly" value="待确认硬件分组/切组协议" disabled />
+          </view>
+          <view class="field-row">
+            <text class="field-label required">卡号解析方式</text>
+            <view class="field-select" @click="openEditor('cardNumberMode')">{{ cardModeLabel }}</view>
           </view>
         </view>
 
-        <view class="four-row protocol-row">
-          <view class="dark-box label-box">起始符</view>
-          <input class="dark-box white-placeholder" v-model="form.startCharacter" placeholder="请输入起始符" placeholder-style="color:#FFFFFF" />
-          <view class="dark-box label-box">结尾符</view>
-          <input class="dark-box white-placeholder" v-model="form.endCharacter" placeholder="请输入结尾符" placeholder-style="color:#FFFFFF" />
+        <view class="section">
+          <view class="section-title">识别配置</view>
+          <view class="field-row">
+            <text class="field-label required">人脸识别阈值</text>
+            <input class="field-input" v-model="form.faceRecognitionThreshold" type="digit" />
+          </view>
+          <view class="field-row">
+            <text class="field-label">摄像头旋转角度</text>
+            <view class="field-select" @click="openEditor('cameraRotation')">{{ form.cameraRotation }}度</view>
+          </view>
+          <view class="field-row">
+            <text class="field-label">指纹识别</text>
+            <input class="field-input wide readonly" value="待外接员工级指纹模块/SDK" disabled />
+          </view>
+          <view class="field-row">
+            <text class="field-label">指纹识别阈值</text>
+            <input class="field-input readonly" :value="form.fingerRecognitionThreshold || ''" placeholder="未接入" disabled />
+          </view>
+          <view class="field-row">
+            <text class="field-label">Token验证</text>
+            <input class="field-input wide readonly" value="V4.1 固定启用，不允许关闭" disabled />
+          </view>
         </view>
 
-        <view class="status-row">
-          <view class="dark-box status-label">设备授权</view>
-          <view class="status-value" :class="statusClass(runtime.deviceAuthorization?.state)">{{ runtime.deviceAuthorization?.message || '状态未知' }}</view>
+        <view class="section status-section">
+          <view class="section-title">运行状态</view>
+          <view class="status-row">
+            <text>设备授权</text>
+            <text :class="statusClass(runtime.deviceAuthorization?.state)">{{ runtime.deviceAuthorization?.message || '状态未知' }}</text>
+          </view>
+          <view class="status-row">
+            <text>识别引擎</text>
+            <text :class="statusClass(runtime.recognitionEngine?.state)">{{ runtime.recognitionEngine?.message || '状态未知' }}</text>
+          </view>
+          <view class="status-row">
+            <text>后端通信</text>
+            <text :class="statusClass(runtime.socket?.state)">{{ runtime.socket?.message || '状态未知' }}</text>
+          </view>
         </view>
-        <view class="status-row">
-          <view class="dark-box status-label">识别引擎</view>
-          <view class="status-value" :class="statusClass(runtime.recognitionEngine?.state)">{{ runtime.recognitionEngine?.message || '状态未知' }}</view>
-        </view>
+      </scroll-view>
 
-        <view class="actions">
-          <button class="white-action-button back" @click="goBack">返回</button>
-          <button class="white-action-button save" :disabled="saving" @click="save">{{ saving ? '保存中' : '保存修改' }}</button>
-        </view>
+      <view class="panel-actions">
+        <button class="button secondary" @click="goBack">取消</button>
+        <button class="button primary" :disabled="saving" @click="save">{{ saving ? '保存中' : '确定' }}</button>
       </view>
     </view>
 
     <ModalShell v-if="editor.visible" closable close-on-mask @close="editor.visible=false">
       <view class="editor-card">
         <text class="editor-title">{{ editor.title }}</text>
-        <input v-if="editor.type==='number'" class="editor-input" v-model="editor.value" type="digit" focus />
-        <view v-else class="editor-options">
-          <view v-for="option in editor.options" :key="option" class="editor-option" :class="{selected:String(editor.value)===String(option)}" @click="editor.value=option">{{ option }}</view>
+        <view class="editor-options">
+          <view v-for="option in editor.options" :key="option.value" class="editor-option"
+            :class="{selected:String(editor.value)===String(option.value)}" @click="editor.value=option.value">
+            {{ option.label }}
+          </view>
         </view>
-        <button class="primary-gradient-button editor-save" @click="applyEditor">确定</button>
+        <button class="button primary editor-save" @click="applyEditor">确定</button>
       </view>
     </ModalShell>
   </view>
@@ -117,88 +189,129 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import AppLogo from '@/components/AppLogo.vue'
 import UiSwitch from '@/components/UiSwitch.vue'
 import ModalShell from '@/components/ModalShell.vue'
 import { appState } from '@/state/appState.js'
 import { services } from '@/services/index.js'
 
-const form=reactive({ ...appState.settings })
-const runtime=reactive(JSON.parse(JSON.stringify(appState.runtime)))
-const saving=ref(false)
-const editor=reactive({visible:false,key:'',title:'',type:'number',value:'',options:[]})
-const descriptors={
-  faceRecognitionThreshold:{title:'人脸识别阈值',type:'number'},
-  cameraRotation:{title:'镜头旋转角度',type:'options',options:[0,90,180,270]},
-  codeValueType:{title:'Code值类型',type:'options',options:['字符','十六进制','十进制']},
-  cardSuccessResponseType:{title:'取卡成功响应',type:'options',options:['短链接','完整响应','不响应']},
-  toastDisplay:{title:'Toast提示框',type:'options',options:['显示','隐藏']},
-  boardUpgradeIntervalMs:{title:'单板升级时间间隔（毫秒）',type:'number'},
-  cardParseMode:{title:'卡号解析方式',type:'options',options:['转可见符','十六进制','原始字符']},
-  backendTransport:{title:'后端通信方式',type:'options',options:['MQTT','TCP']}
+const form = reactive({ ...appState.settings })
+const runtime = reactive(JSON.parse(JSON.stringify(appState.runtime)))
+const saving = ref(false)
+const editor = reactive({ visible: false, key: '', title: '', value: '', options: [] })
+
+const descriptors = {
+  backendTransport: { title: '后端实时通信方式', options: [
+    { value: 'MQTT', label: 'MQTT（推荐，支持实时下行）' },
+    { value: 'HTTP', label: 'HTTP（仅登录、心跳和上报）' },
+    { value: 'TCP', label: 'TCP（旧版兼容）' }
+  ] },
+  httpScheme: { title: 'HTTP协议', options: [
+    { value: 'https', label: 'HTTPS' }, { value: 'http', label: 'HTTP' }
+  ] },
+  mqttScheme: { title: 'MQTT协议', options: [
+    { value: 'ssl', label: 'SSL / MQTTS' }, { value: 'tcp', label: 'TCP / MQTT' }
+  ] },
+  cardNumberMode: { title: '卡号解析方式', options: [
+    { value: 'VISIBLE', label: '可视卡号（15字节ASCII）' },
+    { value: 'PHYSICAL', label: '物理卡号（原始字节十六进制）' }
+  ] },
+  cameraRotation: { title: '摄像头旋转角度', options: [0, 90, 180, 270].map(value => ({ value, label: `${value}度` })) }
 }
 
-const parameterRows=computed(()=>[
-  {left:{key:'cameraRotation',label:'镜头旋转角度',value:form.cameraRotation},right:{key:'ignoreTokenFetch',label:'是否忽略Token获取'}},
-  {left:{key:'codeValueType',label:'Code值类型',value:form.codeValueType},right:{key:'faceRegistrationResponseEnabled',label:'人脸注册：有响应'}},
-  {left:{key:'cardSuccessResponseType',label:'取卡成功响应',value:form.cardSuccessResponseType},right:{key:'tcpDoorCommandResponseEnabled',label:'TCP卡门指令响应：有响应'}},
-  {left:{key:'toastDisplay',label:'Toast提示框',value:form.toastDisplay},right:{key:'secondaryDoorEnabled',label:'二级门：未启用'}},
-  {left:{key:'boardUpgradeIntervalMs',label:'单板升级时间间隔',value:`${form.boardUpgradeIntervalMs}毫秒`},right:{key:'usbCardReaderEnabled',label:'USB读卡：未启用'}}
-])
+const transportLabel = computed(() => ({ MQTT: 'MQTT', HTTP: 'HTTP', TCP: 'TCP（兼容）' }[String(form.backendTransport || '').toUpperCase()] || '请选择'))
+const cardModeLabel = computed(() => String(form.cardNumberMode).toUpperCase() === 'PHYSICAL' ? '物理卡号' : '可视卡号')
 
-onMounted(async()=>{
-  const [settings,status]=await Promise.all([services.loadSettings(),services.getRuntime()])
-  Object.assign(form,settings||{})
-  Object.assign(runtime,status||{})
+onMounted(async () => {
+  const results = await Promise.allSettled([services.loadSettings(), services.getRuntime()])
+  if (results[0].status === 'fulfilled') Object.assign(form, results[0].value || {})
+  if (results[1].status === 'fulfilled') Object.assign(runtime, results[1].value || {})
 })
 
-const openEditor=(key)=>{
-  const desc=descriptors[key]
-  editor.visible=true;editor.key=key;editor.title=desc.title;editor.type=desc.type;editor.options=desc.options||[];editor.value=form[key]
+const openEditor = (key) => {
+  const descriptor = descriptors[key]
+  if (!descriptor) return
+  Object.assign(editor, { visible: true, key, title: descriptor.title, value: form[key], options: descriptor.options })
 }
-const applyEditor=()=>{
-  const numberKeys=['faceRecognitionThreshold','cameraRotation','boardUpgradeIntervalMs']
-  form[editor.key]=numberKeys.includes(editor.key)?Number(editor.value):editor.value
-  editor.visible=false
+
+const applyEditor = () => {
+  form[editor.key] = editor.value
+  editor.visible = false
 }
-const statusClass=(state)=>{
-  if(['AUTHORIZED','ACTIVE'].includes(state)) return 'success'
-  if(['UNAUTHORIZED','ERROR','CODE_IN_USE','CODE_INVALID','EXPIRED'].includes(state)) return 'error'
-  if(['CHECKING','AUTHORIZING'].includes(state)) return 'warning'
-  return 'unknown'
-}
-const validate=()=>{
-  if(!String(form.deviceId).trim()) return '设备ID不能为空'
-  if(!String(form.apiBaseUrl||form.serverAddress).trim()) return 'API地址不能为空'
-  if(!String(form.activationCode).trim()) return '激活码不能为空'
-  const mqtt=Number(form.mqttPort),tcp=Number(form.tcpPort),http=Number(form.httpPort),single=Number(form.singleGroupCount),total=Number(form.totalCount),threshold=Number(form.faceRecognitionThreshold)
-  if(!['MQTT','TCP'].includes(String(form.backendTransport).toUpperCase())) return '后端通信方式必须是 MQTT 或 TCP'
-  if(!Number.isInteger(mqtt)||mqtt<1||mqtt>65535) return 'MQTT端口必须是1～65535之间的整数'
-  if(!Number.isInteger(tcp)||tcp<1||tcp>65535) return 'TCP端口必须是1～65535之间的整数'
-  if(!Number.isInteger(http)||http<1||http>65535) return 'HTTP端口必须是1～65535之间的整数'
-  if(!Number.isInteger(single)||single<1||!Number.isInteger(total)||total<1) return '卡位数量必须为正整数'
-  if(single>total) return '单组数量不能大于总体数量'
-  if(Number.isNaN(threshold)||threshold<0||threshold>1) return '人脸识别阈值必须在0～1之间'
+
+const validPort = (value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 65535
+const validate = () => {
+  if (!String(form.serialPort || '').trim()) return '串口设备不能为空'
+  if (!Number.isInteger(Number(form.baudRate)) || Number(form.baudRate) < 1) return '波特率必须为正整数'
+  if (!String(form.httpServerAddress || '').trim()) return 'HTTP域名/IP不能为空'
+  if (!['http', 'https'].includes(String(form.httpScheme || '').toLowerCase())) return '请选择HTTP协议'
+  if (!validPort(form.httpPort)) return 'HTTP端口必须是1～65535之间的整数'
+
+  const mode = String(form.backendTransport || '').toUpperCase()
+  if (!['MQTT', 'HTTP', 'TCP'].includes(mode)) return '请选择后端通信方式'
+  if (mode === 'MQTT') {
+    if (!String(form.mqttServerAddress || '').trim()) return 'MQTT域名/IP不能为空'
+    if (!['tcp', 'ssl'].includes(String(form.mqttScheme || '').toLowerCase())) return '请选择MQTT协议'
+    if (!validPort(form.mqttPort)) return 'MQTT端口必须是1～65535之间的整数'
+  }
+  if (mode === 'TCP') {
+    if (!String(form.tcpServerAddress || '').trim()) return 'TCP域名/IP不能为空'
+    if (!validPort(form.tcpPort)) return 'TCP端口必须是1～65535之间的整数'
+  }
+
+  const total = Number(form.totalCount)
+  const group = Number(form.singleGroupCount)
+  const interval = Number(form.serialPollingIntervalMs)
+  const threshold = Number(form.faceRecognitionThreshold)
+  if (!Number.isInteger(total) || total < 1 || total > 255) return '卡位总数必须为1～255之间的整数'
+  if (!Number.isInteger(group) || group < 1 || group > total) return '分组大小必须为1～卡位总数之间的整数'
+  if (!Number.isInteger(interval) || interval < 100) return '轮询间隔不能小于100ms'
+  if (!Number.isFinite(threshold) || threshold < 0.6 || threshold > 1) return '人脸识别阈值必须在0.6～1之间'
   return ''
 }
-const save=async()=>{
-  const error=validate();if(error){uni.showToast({title:error,icon:'none'});return}
-  saving.value=true
-  try{await services.saveSettings({...form});Object.assign(appState.settings,form,{initialized:true});uni.showToast({title:'保存成功',icon:'success'});setTimeout(goHome,450)}catch(error){uni.showToast({title:error.message||'保存失败',icon:'none'})}finally{saving.value=false}
-}
-const goHome=()=>{
-  if(typeof window!=='undefined'&&window.location){
-    window.location.replace('/index.html#/pages/index/index')
-    return
+
+const save = async () => {
+  const error = validate()
+  if (error) { uni.showToast({ title: error, icon: 'none' }); return }
+  saving.value = true
+  try {
+    const payload = {
+      ...form,
+      baudRate: String(Number(form.baudRate)),
+      httpPort: Number(form.httpPort),
+      mqttPort: Number(form.mqttPort),
+      tcpPort: Number(form.tcpPort),
+      totalCount: Number(form.totalCount),
+      singleGroupCount: Number(form.singleGroupCount),
+      serialPollingIntervalMs: Number(form.serialPollingIntervalMs),
+      faceRecognitionThreshold: Number(form.faceRecognitionThreshold),
+      cardParseMode: String(form.cardNumberMode).toUpperCase() === 'PHYSICAL' ? '物理卡号' : '可视卡号'
+    }
+    const saved = await services.saveSettings(payload)
+    Object.assign(form, saved || payload)
+    uni.showToast({ title: '保存成功', icon: 'success' })
+    setTimeout(goHome, 450)
+  } catch (error) {
+    uni.showToast({ title: error.message || '保存失败', icon: 'none' })
+  } finally {
+    saving.value = false
   }
-  uni.reLaunch({url:'/pages/index/index'})
 }
-const goBack=()=>{
-  const pages=getCurrentPages();if(pages.length>1) uni.navigateBack();else uni.reLaunch({url:appState.settings.initialized?'/pages/index/index':'/pages/splash/splash'})
+
+const statusClass = (state) => {
+  if (['AUTHORIZED', 'ACTIVE', 'AUTHENTICATED', 'READY'].includes(state)) return 'status-success'
+  if (['CONNECTING', 'CHECKING', 'AUTHORIZING', 'LOGIN_SENT', 'SYNCING'].includes(state)) return 'status-warning'
+  if (['UNAUTHORIZED', 'ERROR', 'AUTH_FAILED', 'AUTH_TIMEOUT', 'EXPIRED'].includes(state)) return 'status-error'
+  return 'status-muted'
+}
+
+const goHome = () => uni.reLaunch({ url: '/pages/index/index' })
+const goBack = () => {
+  const pages = getCurrentPages()
+  if (pages.length > 1) uni.navigateBack()
+  else uni.reLaunch({ url: appState.settings.initialized ? '/pages/index/index' : '/pages/splash/splash' })
 }
 </script>
 
 <style scoped>
-.config-page{width:100%;height:100%;min-height:0;background:#1f76ff;color:#fff;overflow:hidden}.config-scroll{width:100%;height:0;min-height:0;flex:1 1 auto;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}.config-content{width:100%;max-width:1200px;margin:0 auto;padding:clamp(12px,1.5vw,22px);padding-bottom:max(48px,calc(env(safe-area-inset-bottom) + 26px));box-sizing:border-box}.brand-header{height:clamp(90px,11vh,126px);display:flex;align-items:flex-start;padding:clamp(7px,1vw,14px) clamp(12px,1.5vw,20px);box-sizing:border-box}.logo-box{width:clamp(72px,10vw,104px);height:clamp(48px,6.5vw,68px)}.brand-copy{display:flex;flex-direction:column;margin-left:clamp(14px,2vw,24px)}.brand-title{font-size:clamp(24px,3.4vw,38px);font-weight:500;line-height:1.1}.brand-subtitle{font-size:clamp(12px,1.6vw,18px);margin-top:7px}.four-row{display:grid;grid-template-columns:minmax(82px,126px) minmax(0,1fr) minmax(82px,126px) minmax(0,1fr);gap:clamp(5px,.8vw,12px);margin-bottom:clamp(9px,1.2vh,15px)}.first-row{margin-top:0}.dark-box{height:clamp(44px,5.8vh,60px);border:0;border-radius:clamp(8px,1vw,12px);background:#0a53c4;color:#fff;padding:0 clamp(11px,1.4vw,16px);font-size:clamp(13px,1.7vw,19px);display:flex;align-items:center;min-width:0}.label-box{justify-content:center;text-align:center;white-space:nowrap}.short-box{font-weight:500}.full-row,.status-row{display:grid;grid-template-columns:minmax(82px,126px) minmax(0,1fr);gap:clamp(5px,.8vw,12px);margin-bottom:clamp(9px,1.2vh,15px)}.parse-row{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,4vw,70px);padding:clamp(8px,1.2vh,15px) clamp(18px,3vw,38px);margin-bottom:clamp(7px,1vh,13px);font-size:clamp(14px,1.8vw,20px)}.plain-setting,.polling-setting{min-height:34px;display:flex;align-items:center}.polling-setting{justify-content:space-between;gap:14px}.clickable{cursor:pointer}.server-row{margin-bottom:0}.server-help{display:block;margin-left:calc(min(126px,16vw) + clamp(5px,.8vw,12px));margin-top:clamp(5px,.8vh,9px);margin-bottom:clamp(16px,2vh,24px);font-size:clamp(10px,1.35vw,15px);color:#0755b8;white-space:normal;overflow-wrap:anywhere}.port-row{margin-bottom:clamp(18px,2.5vh,30px)}.no-wrap{white-space:nowrap}.function-area{font-size:clamp(14px,1.8vw,20px);margin-bottom:clamp(18px,2.4vh,30px)}.full-param{height:clamp(38px,4.7vh,52px);display:flex;align-items:center;padding-left:clamp(15px,2vw,24px)}.param-pair{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,4vw,70px);min-height:clamp(42px,5.5vh,60px);align-items:center;padding:0 clamp(15px,2vw,24px)}.param-left,.param-right{display:flex;align-items:center;min-width:0}.param-right{justify-content:space-between;gap:14px}.protocol-row{margin-bottom:clamp(9px,1.2vh,15px)}.white-placeholder{color:#fff}.status-label{justify-content:center}.status-value{height:clamp(44px,5.8vh,60px);border-radius:clamp(8px,1vw,12px);padding:0 clamp(12px,1.5vw,18px);display:flex;align-items:center;font-size:clamp(13px,1.7vw,19px);color:#fff}.status-value.success{background:#05b63f}.status-value.error{background:#ef1010}.status-value.warning{background:#ff9829}.status-value.unknown{background:#8a98aa}.actions{display:flex;justify-content:center;gap:clamp(28px,6vw,72px);padding:clamp(42px,5.5vh,72px) 0 clamp(12px,2vh,24px)}.actions .white-action-button{height:clamp(62px,8vh,86px)}.actions .back{width:clamp(145px,20vw,205px)}.actions .save{width:clamp(195px,28vw,275px)}.editor-card{padding:clamp(34px,5vw,58px);display:flex;flex-direction:column}.editor-title{font-size:clamp(22px,3vw,34px);font-weight:600;text-align:center}.editor-input{height:58px;margin-top:28px;background:#f1f5fb;border-radius:12px;padding:0 18px;font-size:22px}.editor-options{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:28px}.editor-option{padding:16px 12px;border-radius:10px;background:#f1f5fb;text-align:center}.editor-option.selected{background:#1f76ff;color:#fff}.editor-save{height:58px;margin-top:28px}
-@media(max-width:560px){.four-row{grid-template-columns:82px minmax(0,1fr) 88px minmax(0,1fr)}.server-help{margin-left:87px;font-size:10px}.parse-row,.param-pair{gap:14px;padding-left:10px;padding-right:10px}.brand-header{height:88px}.actions{gap:18px}}
+.settings-page{width:100%;height:100%;min-height:100vh;background:#f3f5f9;color:#30343b;display:flex;align-items:center;justify-content:center;padding:clamp(10px,2vw,24px);box-sizing:border-box}.settings-panel{width:min(760px,100%);height:min(1120px,calc(100vh - 20px));background:#fff;border-radius:10px;box-shadow:0 10px 32px rgba(20,35,65,.14);display:flex;flex-direction:column;overflow:hidden}.panel-header{height:58px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e4e8ef;flex:0 0 auto}.panel-title{font-size:20px;font-weight:600}.close-button{font-size:30px;line-height:1;color:#a1a7b2;padding:8px;cursor:pointer}.settings-scroll{flex:1;height:0}.section{padding:18px 24px 20px;border-bottom:1px solid #dde2ea}.section-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px}.section-title:after{content:'';height:1px;background:#dfe4ec;flex:1}.section-help{display:block;margin:-5px 0 14px 114px;color:#858c98;font-size:13px;line-height:1.5}.section-help.warning{color:#c67b20}.field-row{display:flex;align-items:center;min-height:48px;margin:7px 0;gap:14px}.field-label{width:104px;text-align:right;color:#60656f;font-weight:600;font-size:14px;flex:0 0 auto}.field-label.required:before{content:'*';color:#f04444;margin-right:5px}.field-input,.field-select{width:200px;height:38px;border:1px solid #d7dde7;border-radius:5px;background:#fff;color:#555d68;padding:0 13px;box-sizing:border-box;font-size:14px;display:flex;align-items:center}.field-input.wide,.field-select{width:min(460px,calc(100% - 118px))}.field-input.readonly{background:#f4f6f9;color:#9298a3}.field-select{cursor:pointer;position:relative}.field-select:after{content:'⌄';margin-left:auto;color:#a7adba}.status-section{padding-bottom:28px}.status-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0 8px 118px;font-size:14px}.status-success{color:#20a36a}.status-warning{color:#c98218}.status-error{color:#e14747}.status-muted{color:#9298a3}.panel-actions{height:68px;display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:0 20px;border-top:1px solid #e3e7ee;flex:0 0 auto;background:#fff}.button{height:38px;min-width:82px;border-radius:5px;font-size:14px;line-height:38px;padding:0 18px;margin:0}.button:after{border:0}.button.primary{background:#2878ff;color:#fff}.button.secondary{background:#fff;color:#646b76;border:1px solid #d8dde6}.button[disabled]{opacity:.55}.editor-card{width:min(420px,82vw);background:#fff;border-radius:10px;padding:22px}.editor-title{display:block;font-size:18px;font-weight:600;margin-bottom:14px}.editor-options{border:1px solid #e0e4eb;border-radius:6px;overflow:hidden}.editor-option{padding:13px 15px;border-bottom:1px solid #eef0f4}.editor-option:last-child{border-bottom:0}.editor-option.selected{background:#eef5ff;color:#2878ff}.editor-save{margin:18px 0 0 auto;display:block}@media(max-width:600px){.settings-page{padding:0}.settings-panel{height:100vh;border-radius:0}.section{padding-left:14px;padding-right:14px}.field-label{width:96px}.field-input.wide,.field-select{width:calc(100% - 110px)}.section-help{margin-left:110px}.status-row{padding-left:110px}}
 </style>
