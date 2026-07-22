@@ -52,6 +52,22 @@ jobs:
           git apply --check /tmp/device-batch1.patch
           git apply /tmp/device-batch1.patch
 
+      - name: Apply reviewed compile fixups
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/xingyao/card/core/DeviceDataSyncManager.java')
+          text = path.read_text(encoding='utf-8')
+          old = '.put("message", "人脸同步数据缺少 employeeId、faceFeature 或 faceImage");'
+          new = '.put("message", "人脸同步数据缺少 employeeId、faceFeature 或 faceImage"));'
+          if old not in text:
+              raise SystemExit('Expected DeviceDataSyncManager compile-fix target not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Restore complete Gradle Wrapper
         shell: bash
         run: |
