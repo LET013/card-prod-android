@@ -10,7 +10,9 @@ Use this skill before changing behavior across more than one major layer.
 ## Required reading
 
 - `AGENTS.md`
+- `docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md`
 - `docs/CODEX_PROJECT_GUIDE.md`
+- `docs/DEVICE_CONFIGURATION_AND_INTERFACE_AUDIT.md` for endpoint/configuration work
 - Existing implementation around every proposed entry point and state owner
 
 ## Required analysis before code
@@ -19,7 +21,7 @@ Produce these six items:
 
 1. **Entry points**: UI action, MQTT command, startup event, face callback, serial callback, or timer.
 2. **Single source of truth**: exact Repository or state machine that owns each value.
-3. **Call chain**: entry → validation → operation engine → communication → Repository → UI/backend report.
+3. **Call chain**: entry → validation → data/business layer → communication port → Repository → UI/backend report.
 4. **State transitions**: happy path, failure, timeout, cancel, retry, duplicate, restart, and offline path.
 5. **Compatibility surface**: existing JSBridge action, MQTT command, HTTP endpoint, serial frame, persisted data, and UI field affected.
 6. **File-level plan**: files to modify, files deliberately not modified, tests and docs to update.
@@ -31,9 +33,11 @@ Do not start implementation until this analysis is internally consistent.
 Apply these rules:
 
 - UI renders state and sends intent. It must not own hardware or backend truth.
-- `DeviceCoreService` coordinates; it should not become a monolithic parser, database, or protocol implementation.
-- Communication managers send/receive and expose transport state. They do not make business decisions.
-- Repositories own durable or authoritative local state.
+- `DeviceCoreService` owns foreground-service lifecycle and dependency wiring only. It must not coordinate business workflows.
+- `DeviceDataLayer` is the shared business entry for UI, MQTT, face and administrator actions.
+- `DeviceStateStore` and Repositories own runtime truth and emit UI events only after state is committed.
+- Communication managers send/receive and expose structured transport results. They do not make business decisions.
+- HTTP, MQTT and legacy TCP use independent endpoint configuration; never collapse them into one server field.
 - UI and remote commands converge before any serial side effect.
 - Every side-effecting operation has `operationId`; every remote command has persistent `msgId` idempotency.
 - Transport ACK, board ACK, physical confirmation, and backend ACK are distinct states.
@@ -44,6 +48,7 @@ Apply these rules:
 Before approving the plan, answer:
 
 - Can the UI be recreated without losing device truth?
+- Can HTTP and MQTT point to different hosts without one overwriting the other?
 - Can MQTT reconnect without repeating a completed side effect?
 - Can the process restart and explain whether an operation completed?
 - Can a serial timeout be linked back to the initiating request?
@@ -56,19 +61,21 @@ Any “no” must be addressed or recorded as scoped technical debt.
 
 Stop and report a blocker instead of guessing when:
 
-- serial topology or a function code is undocumented;
-- backend field, signature, ACK, deletion, or cursor semantics are ambiguous;
+- serial topology, group selection, or a function code is undocumented;
+- backend field, MQTT username, signature, ACK, deletion, or cursor semantics are ambiguous;
+- HTTP-only mode is expected to receive downlink commands without a documented downlink endpoint;
 - a requested feature depends on identifying an employee from Android system fingerprint;
 - a change would require maintaining two competing sources of truth;
 - implementation would silently preserve legacy behavior that conflicts with physical reality.
 
 ## Implementation discipline
 
-- Prefer one explicit rule over a new subsystem when the behavior is local and stateless.
+- Prefer one explicit rule over a new subsystem when behavior is local and stateless.
 - Use a small state machine when behavior spans time, retries, restart, or multiple acknowledgements.
 - Do not combine unrelated architecture migrations in one batch.
 - Preserve current UI contracts unless the task explicitly includes coordinated UI migration.
 - Add migration/default behavior for persisted data changes.
+- Configuration fields without an implemented consumer stay blank or disabled; do not invent working defaults.
 
 ## Required output
 
