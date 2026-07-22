@@ -27,7 +27,9 @@ jobs:
         run: git fetch origin reference/motone-current:refs/remotes/origin/reference/motone-current
 
       - name: Apply stage 1 migration
-        run: python3 .reference-migration/apply_stage1.py
+        run: |
+          python3 .reference-migration/apply_stage1.py
+          python3 .reference-migration/post_stage1.py
 
       - name: Validate source boundaries
         shell: bash
