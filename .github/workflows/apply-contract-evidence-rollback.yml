@@ -126,11 +126,12 @@ jobs:
           ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/android-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            echo '===== Android test failure tail ====='
-            tail -n 220 /tmp/android-tests.log
+            echo '===== ANDROID_TEST_FAILURE ====='
+            grep -E -i '(^|[[:space:]])error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|There were failing tests|Compilation failed|Execution failed for task|Exception is:' /tmp/android-tests.log | tail -n 80 || true
+            echo '===== END_FAILURE ====='
             exit "$status"
           fi
-          tail -n 40 /tmp/android-tests.log
+          echo 'ANDROID_TESTS_PASSED'
 
       - name: Build debug APK
         shell: bash
@@ -139,12 +140,13 @@ jobs:
           ./gradlew :app:assembleDebug --no-daemon --console=plain > /tmp/android-build.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            echo '===== Android build failure tail ====='
-            tail -n 220 /tmp/android-build.log
+            echo '===== ANDROID_BUILD_FAILURE ====='
+            grep -E -i '(^|[[:space:]])error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|Compilation failed|Execution failed for task|Exception is:' /tmp/android-build.log | tail -n 80 || true
+            echo '===== END_FAILURE ====='
             exit "$status"
           fi
-          tail -n 40 /tmp/android-build.log
           test -s app/build/outputs/apk/debug/app-debug.apk
+          echo 'ANDROID_APK_PASSED'
 
       - name: Commit verified source rollback
         shell: bash
