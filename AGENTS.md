@@ -62,6 +62,7 @@
 ```bash
 node --check uniapp/src/services/nativeBridge.js
 node --check uniapp/src/services/index.js
+node --check uniapp/src/state/appState.js
 ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 ./gradlew assembleDebug --no-daemon --console=plain
 ```
