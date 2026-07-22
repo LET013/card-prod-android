@@ -1,0 +1,134 @@
+name: Apply strict backend layers and documented interfaces
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.stage2-migration/**'
+      - '.github/workflows/apply-stage2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply stage 2
+        run: python3 .stage2-migration/apply.py
+
+      - name: Static architecture and contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f app/src/main/java/com/xingyao/card/core/BackendTransportManager.java
+          test -f app/src/main/java/com/xingyao/card/core/DocumentedBackendService.java
+          ! test -e app/src/main/java/com/xingyao/card/core/WebSocketConnectionManager.java
+          ! grep -R 'NativeSettingsRepository' app/src/main/java/com/xingyao/card/core/BackendTransportManager.java app/src/main/java/com/xingyao/card/core/BackendHttpGateway.java
+          ! grep -R 'DeviceProvisioningManager' app/src/main/java/com/xingyao/card/core/BackendTransportManager.java
+          ! grep -R 'new BackendHttpClient' app/src/main/java/com/xingyao/card/core/DeviceProvisioningManager.java
+          ! grep -R 'card-test.quyohui.com' app/src/main
+          ! grep -R 'api.example.com' app/src/main
+          ! grep -R 'WebSocketConnectionManager' app/src/main
+          grep -q 'BackendTransportManager' app/src/main/java/com/xingyao/card/service/DeviceCoreService.java
+          grep -q 'DocumentedBackendService' app/src/main/java/com/xingyao/card/core/DeviceDataLayer.java
+          grep -q 'CARD_TAKE' app/src/main/java/com/xingyao/card/core/BackendHttpGateway.java
+          grep -q 'CARD_RETURN' app/src/main/java/com/xingyao/card/core/BackendHttpGateway.java
+          grep -q 'FINGERPRINT_UPLOAD' app/src/main/java/com/xingyao/card/core/BackendHttpGateway.java
+          grep -q 'LOGS_BATCH' app/src/main/java/com/xingyao/card/core/BackendHttpGateway.java
+          grep -q '/api/v1/firmware/' app/src/main/java/com/xingyao/card/core/BackendHttpGateway.java
+          ! grep -R '\.put("code", 4001)\|\.put("code", 4003)\|\.put("code", 501)\|\.put("code", 9000)' app/src/main/java/com/xingyao/card/core/DeviceCommandCoordinator.java
+          ! grep -R 'ACTIVATED.*AUTHORIZED' app/src/main/java/com/xingyao/card/core/DeviceDataLayer.java
+          ! grep -R 'syncAll(new JSONObject\|fullSync' app/src/main/java/com/xingyao/card/core
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build H5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uniapp
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build:h5
+          test -s dist/build/h5/index.html
+
+      - name: Install H5 assets
+        run: |
+          rm -rf app/src/main/assets/*
+          cp -R uniapp/dist/build/h5/. app/src/main/assets/
+
+      - name: Run Android unit tests
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set +e
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain > /tmp/tests.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            mkdir -p .diagnostic
+            {
+              echo 'STAGE2_ANDROID_TEST_FAILURE'
+              grep -E -i 'error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|Execution failed|There were failing tests|CMake Error|ninja:' /tmp/tests.log | tail -n 180 || true
+              echo '--- LOG TAIL ---'
+              tail -n 220 /tmp/tests.log
+            } > .diagnostic/stage2-error.txt
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add .diagnostic/stage2-error.txt
+            git commit -m '记录第二批编译诊断 [skip ci]'
+            git push origin HEAD:"${HEAD_BRANCH}"
+            exit "$status"
+          fi
+          tail -n 50 /tmp/tests.log
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set +e
+          ./gradlew :app:assembleDebug --no-daemon --console=plain > /tmp/build.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo '===== APK BUILD FAILURE ====='
+            grep -E -i 'error:|cannot find symbol|incompatible types|FAILURE:|FAILED|Execution failed|CMake Error|ninja:' /tmp/build.log | tail -n 180 || true
+            tail -n 220 /tmp/build.log
+            exit "$status"
+          fi
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/arm64-v8a/libSerialPort.so'
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/index.html'
+
+      - name: Commit verified stage 2
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app uniapp/src/services/index.js
+          if git diff --cached --quiet; then
+            echo 'No source changes to commit'
+            exit 0
+          fi
+          git commit -m '完成严格后端三层与Markdown接口入口'
+          git push origin HEAD:"${HEAD_BRANCH}"
