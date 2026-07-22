@@ -11,19 +11,16 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Android business-data repository.
- *
- * The in-memory maps are the live source of truth. SharedPreferences is only the restart backing
- * store and is never read by Vue.
- */
+/** Android-owned employee, face and fingerprint Map with restart backing storage. */
 public final class DeviceDataRepository {
     private static final String PREFS = "device_sync_data";
     private static final String KEY_EMPLOYEES = "employees";
     private static final String KEY_FACE_FEATURES = "faceFeatures";
     private static final String KEY_FINGER_FEATURES = "fingerFeatures";
     private static final String KEY_EMPLOYEE_SYNC_VERSION = "employeeSyncVersion";
-    private static final String KEY_FACE_SYNC_VERSION = "faceSyncVersion";
+    private static final String KEY_FACE_FETCHED_VERSION = "faceFetchedVersion";
+    private static final String KEY_FACE_APPLIED_VERSION = "faceAppliedVersion";
+    private static final String KEY_LEGACY_FACE_SYNC_VERSION = "faceSyncVersion";
     private static final String KEY_FINGER_SYNC_VERSION = "fingerSyncVersion";
     private static final String KEY_UPDATED_AT = "updatedAt";
 
@@ -32,12 +29,14 @@ public final class DeviceDataRepository {
     private final LinkedHashMap<String, JSONObject> faceFeatures = new LinkedHashMap<>();
     private final LinkedHashMap<String, JSONObject> fingerFeatures = new LinkedHashMap<>();
     private long employeeSyncVersion;
-    private long faceSyncVersion;
+    private long faceFetchedVersion;
+    private long faceAppliedVersion;
     private long fingerSyncVersion;
     private long updatedAt;
 
     public DeviceDataRepository(Context context) {
-        preferences = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        preferences = context.getApplicationContext()
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         loadBackingStore();
     }
 
@@ -54,36 +53,89 @@ public final class DeviceDataRepository {
         return result;
     }
 
-    public synchronized boolean deleteEmployee(String id) throws JSONException {
+    /** Returns the canonical employeeId that was removed, or an empty string when no match exists. */
+    public synchronized String deleteEmployee(String id) throws JSONException {
         String target = id == null ? "" : id.trim();
-        if (target.isEmpty()) return false;
-        String matchedKey = null;
-        for (Map.Entry<String, JSONObject> entry : employees.entrySet()) {
-            JSONObject employee = entry.getValue();
-            if (target.equals(entry.getKey())
-                    || target.equals(employee.optString("id", ""))
-                    || target.equals(employee.optString("employeeId", ""))) {
-                matchedKey = entry.getKey();
-                break;
-            }
-        }
-        if (matchedKey == null) return false;
-        String employeeId = employees.get(matchedKey).optString("employeeId", matchedKey);
-        employees.remove(matchedKey);
+        if (target.isEmpty()) return "";
+        String matchedKey = findEmployeeKey(target);
+        if (matchedKey == null) return "";
+        JSONObject removed = employees.remove(matchedKey);
+        String employeeId = removed == null ? matchedKey
+                : removed.optString("employeeId", matchedKey);
         removeFeaturesForEmployee(faceFeatures, employeeId);
         removeFeaturesForEmployee(fingerFeatures, employeeId);
         touchAndPersist();
-        return true;
+        return employeeId;
     }
 
     public synchronized void markFaceRegistered(String employeeId, String employeeName,
-                                                boolean registered) throws JSONException {
+                                                 boolean registered) throws JSONException {
         markBiometric(employeeId, employeeName, "faceRegistered", registered);
     }
 
-    public synchronized void markFingerprintRegistered(String employeeId, String employeeName,
-                                                       boolean registered) throws JSONException {
-        markBiometric(employeeId, employeeName, "fingerprintRegistered", registered);
+    /** System biometric authorization is not employee-level fingerprint registration. */
+    public synchronized void markSystemBiometricAuthorized(String employeeId, String employeeName,
+                                                            boolean authorized) throws JSONException {
+        String id = employeeId == null ? "" : employeeId.trim();
+        if (id.isEmpty()) return;
+        JSONObject employee = employees.get(id);
+        if (employee == null) return;
+        employee = copy(employee);
+        employee.put("systemBiometricAuthorized", authorized)
+                .put("systemBiometricScope", "DEVICE_USER");
+        if (employee.optString("employeeName", "").isEmpty()
+                && employeeName != null && !employeeName.trim().isEmpty()) {
+            employee.put("employeeName", employeeName.trim());
+        }
+        employees.put(id, employee);
+        touchAndPersist();
+    }
+
+    public synchronized JSONObject applyEmployeeSync(JSONArray items, JSONArray deletedEmployeeIds,
+                                                       boolean full, long syncVersion)
+            throws JSONException {
+        if (full) employees.clear();
+        upsertMap(employees, items, "employeeId", "employeeCode", "id");
+        if (deletedEmployeeIds != null) {
+            for (int index = 0; index < deletedEmployeeIds.length(); index++) {
+                String id = String.valueOf(deletedEmployeeIds.opt(index)).trim();
+                String key = findEmployeeKey(id);
+                if (key == null) continue;
+                JSONObject removed = employees.remove(key);
+                String employeeId = removed == null ? id : removed.optString("employeeId", id);
+                removeFeaturesForEmployee(faceFeatures, employeeId);
+                removeFeaturesForEmployee(fingerFeatures, employeeId);
+            }
+        }
+        if (syncVersion > 0L) employeeSyncVersion = syncVersion;
+        touchAndPersist();
+        return snapshot();
+    }
+
+    /** Stores fetched face records but deliberately does not advance the applied cursor. */
+    public synchronized JSONObject stageFaceSync(JSONArray items, boolean full, long fetchedVersion)
+            throws JSONException {
+        if (full) faceFeatures.clear();
+        applyFeatureDelta(faceFeatures, items, "faceId");
+        if (fetchedVersion > 0L) faceFetchedVersion = fetchedVersion;
+        touchAndPersist();
+        return snapshot();
+    }
+
+    public synchronized JSONObject markFaceApplied(long appliedVersion) throws JSONException {
+        if (appliedVersion > 0L) faceAppliedVersion = appliedVersion;
+        if (faceFetchedVersion < faceAppliedVersion) faceFetchedVersion = faceAppliedVersion;
+        touchAndPersist();
+        return snapshot();
+    }
+
+    public synchronized JSONObject applyFingerSync(JSONArray items, boolean full, long syncVersion)
+            throws JSONException {
+        if (full) fingerFeatures.clear();
+        applyFeatureDelta(fingerFeatures, items, "fingerId");
+        if (syncVersion > 0L) fingerSyncVersion = syncVersion;
+        touchAndPersist();
+        return snapshot();
     }
 
     public synchronized JSONObject snapshot() throws JSONException {
@@ -92,53 +144,49 @@ public final class DeviceDataRepository {
                 .put("faceFeatures", mapValues(faceFeatures))
                 .put("fingerFeatures", mapValues(fingerFeatures))
                 .put("employeeSyncVersion", employeeSyncVersion)
-                .put("faceSyncVersion", faceSyncVersion)
+                .put("faceFetchedVersion", faceFetchedVersion)
+                .put("faceAppliedVersion", faceAppliedVersion)
+                .put("faceSyncVersion", faceAppliedVersion)
                 .put("fingerSyncVersion", fingerSyncVersion)
                 .put("updatedAt", updatedAt);
     }
 
-    public synchronized JSONObject saveSyncResult(JSONArray employeeItems, long employeeVersion,
-                                                   JSONArray faceItems, long faceVersion,
-                                                   JSONArray fingerItems, long fingerVersion)
-            throws JSONException {
-        if (employeeItems != null) {
-            replaceMap(employees, employeeItems, "employeeId", "employeeCode", "id");
-            if (employeeVersion > 0L) employeeSyncVersion = employeeVersion;
-        }
-        if (faceItems != null) {
-            replaceMap(faceFeatures, faceItems, "faceId", "employeeId", "id");
-            if (faceVersion > 0L) faceSyncVersion = faceVersion;
-        }
-        if (fingerItems != null) {
-            replaceMap(fingerFeatures, fingerItems, "fingerId", "employeeId", "id");
-            if (fingerVersion > 0L) fingerSyncVersion = fingerVersion;
-        }
-        touchAndPersist();
-        return snapshot();
-    }
-
     public synchronized long employeeSyncVersion() { return employeeSyncVersion; }
-    public synchronized long faceSyncVersion() { return faceSyncVersion; }
+    public synchronized long faceSyncVersion() { return faceAppliedVersion; }
+    public synchronized long faceFetchedVersion() { return faceFetchedVersion; }
     public synchronized long fingerSyncVersion() { return fingerSyncVersion; }
 
     private void loadBackingStore() {
         synchronized (this) {
-            try {
-                replaceMap(employees, new JSONArray(preferences.getString(KEY_EMPLOYEES, "[]")),
-                        "employeeId", "employeeCode", "id");
-                replaceMap(faceFeatures, new JSONArray(preferences.getString(KEY_FACE_FEATURES, "[]")),
-                        "faceId", "employeeId", "id");
-                replaceMap(fingerFeatures, new JSONArray(preferences.getString(KEY_FINGER_FEATURES, "[]")),
-                        "fingerId", "employeeId", "id");
-            } catch (JSONException ignored) {
-                employees.clear();
-                faceFeatures.clear();
-                fingerFeatures.clear();
-            }
-            employeeSyncVersion = preferences.getLong(KEY_EMPLOYEE_SYNC_VERSION, 0L);
-            faceSyncVersion = preferences.getLong(KEY_FACE_SYNC_VERSION, 0L);
-            fingerSyncVersion = preferences.getLong(KEY_FINGER_SYNC_VERSION, 0L);
+            boolean employeeCorrupt = !loadMap(KEY_EMPLOYEES, employees,
+                    "employeeId", "employeeCode", "id");
+            boolean faceCorrupt = !loadMap(KEY_FACE_FEATURES, faceFeatures,
+                    "faceId", "employeeId", "id");
+            boolean fingerCorrupt = !loadMap(KEY_FINGER_FEATURES, fingerFeatures,
+                    "fingerId", "employeeId", "id");
+
+            employeeSyncVersion = employeeCorrupt ? 0L
+                    : preferences.getLong(KEY_EMPLOYEE_SYNC_VERSION, 0L);
+            long legacyFace = preferences.getLong(KEY_LEGACY_FACE_SYNC_VERSION, 0L);
+            faceFetchedVersion = faceCorrupt ? 0L
+                    : preferences.getLong(KEY_FACE_FETCHED_VERSION, legacyFace);
+            faceAppliedVersion = faceCorrupt ? 0L
+                    : preferences.getLong(KEY_FACE_APPLIED_VERSION, legacyFace);
+            fingerSyncVersion = fingerCorrupt ? 0L
+                    : preferences.getLong(KEY_FINGER_SYNC_VERSION, 0L);
             updatedAt = preferences.getLong(KEY_UPDATED_AT, 0L);
+        }
+    }
+
+    private boolean loadMap(String key, LinkedHashMap<String, JSONObject> target,
+                            String... preferredKeys) {
+        target.clear();
+        try {
+            upsertMap(target, new JSONArray(preferences.getString(key, "[]")), preferredKeys);
+            return true;
+        } catch (Exception ignored) {
+            target.clear();
+            return false;
         }
     }
 
@@ -158,10 +206,6 @@ public final class DeviceDataRepository {
                     .put("enabled", true);
         } else {
             employee = copy(employee);
-            if (employee.optString("employeeName", "").isEmpty()
-                    && employeeName != null && !employeeName.trim().isEmpty()) {
-                employee.put("employeeName", employeeName.trim());
-            }
         }
         employee.put(field, registered);
         employees.put(id, employee);
@@ -175,28 +219,79 @@ public final class DeviceDataRepository {
                 .putString(KEY_FACE_FEATURES, mapValues(faceFeatures).toString())
                 .putString(KEY_FINGER_FEATURES, mapValues(fingerFeatures).toString())
                 .putLong(KEY_EMPLOYEE_SYNC_VERSION, employeeSyncVersion)
-                .putLong(KEY_FACE_SYNC_VERSION, faceSyncVersion)
+                .putLong(KEY_FACE_FETCHED_VERSION, faceFetchedVersion)
+                .putLong(KEY_FACE_APPLIED_VERSION, faceAppliedVersion)
+                .putLong(KEY_LEGACY_FACE_SYNC_VERSION, faceAppliedVersion)
                 .putLong(KEY_FINGER_SYNC_VERSION, fingerSyncVersion)
                 .putLong(KEY_UPDATED_AT, updatedAt);
         if (!editor.commit()) throw new IllegalStateException("无法持久化Android业务缓存");
     }
 
-    private static void replaceMap(LinkedHashMap<String, JSONObject> target, JSONArray source,
-                                   String... preferredKeys) throws JSONException {
-        target.clear();
+    private String findEmployeeKey(String target) {
+        for (Map.Entry<String, JSONObject> entry : employees.entrySet()) {
+            JSONObject employee = entry.getValue();
+            if (target.equals(entry.getKey())
+                    || target.equals(employee.optString("id", ""))
+                    || target.equals(employee.optString("employeeId", ""))
+                    || target.equals(employee.optString("employeeCode", ""))) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private static void applyFeatureDelta(LinkedHashMap<String, JSONObject> target,
+                                          JSONArray items, String primaryKey) throws JSONException {
+        if (items == null) return;
+        for (int index = 0; index < items.length(); index++) {
+            JSONObject item = items.optJSONObject(index);
+            if (item == null) continue;
+            String employeeId = item.optString("employeeId", "").trim();
+            String key = firstKey(item, primaryKey, "id", "employeeId");
+            if (isDeleted(item)) {
+                if (!key.isEmpty()) target.remove(key);
+                if (!employeeId.isEmpty()) removeFeaturesForEmployee(target, employeeId);
+                continue;
+            }
+            if (key.isEmpty()) key = "ROW-" + index + "-" + System.currentTimeMillis();
+            JSONObject previous = target.get(key);
+            target.put(key, merge(previous, item));
+        }
+    }
+
+    private static void upsertMap(LinkedHashMap<String, JSONObject> target, JSONArray source,
+                                  String... preferredKeys) throws JSONException {
         if (source == null) return;
         for (int index = 0; index < source.length(); index++) {
             JSONObject item = source.optJSONObject(index);
             if (item == null) continue;
-            JSONObject copy = copy(item);
-            String key = firstKey(copy, preferredKeys);
+            String key = firstKey(item, preferredKeys);
             if (key.isEmpty()) key = "ROW-" + index;
-            target.put(key, copy);
+            JSONObject previous = target.get(key);
+            target.put(key, merge(previous, item));
         }
     }
 
+    private static JSONObject merge(JSONObject previous, JSONObject incoming) throws JSONException {
+        JSONObject result = previous == null ? new JSONObject() : copy(previous);
+        if (incoming == null) return result;
+        java.util.Iterator<String> keys = incoming.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            result.put(key, incoming.opt(key));
+        }
+        return result;
+    }
+
+    private static boolean isDeleted(JSONObject item) {
+        String status = item == null ? "" : item.optString("status", "");
+        return "1".equals(status) || "DELETED".equalsIgnoreCase(status)
+                || "DISABLED".equalsIgnoreCase(status);
+    }
+
     private static void removeFeaturesForEmployee(LinkedHashMap<String, JSONObject> target,
-                                                  String employeeId) {
+                                                   String employeeId) {
+        if (employeeId == null || employeeId.isEmpty()) return;
         target.entrySet().removeIf(entry -> employeeId.equals(
                 entry.getValue().optString("employeeId", "")));
     }
@@ -223,11 +318,12 @@ public final class DeviceDataRepository {
     }
 
     private static boolean contains(JSONObject employee, String keyword) {
-        String haystack = (employee.optString("employeeId") + " "
-                + employee.optString("employeeCode") + " "
-                + employee.optString("employeeName") + " "
-                + employee.optString("cardNo") + " "
-                + employee.optString("department")).toLowerCase(Locale.US);
-        return haystack.contains(keyword);
+        String value = employee.optString("employeeName", "") + " "
+                + employee.optString("employeeId", "") + " "
+                + employee.optString("employeeCode", "") + " "
+                + employee.optString("cardNo", "") + " "
+                + employee.optString("department", "") + " "
+                + employee.optString("position", "");
+        return value.toLowerCase(Locale.US).contains(keyword);
     }
 }
