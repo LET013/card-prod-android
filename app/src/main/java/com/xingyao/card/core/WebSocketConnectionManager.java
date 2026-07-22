@@ -200,10 +200,21 @@ public final class WebSocketConnectionManager {
             try {
                 JSONObject provisioned = provisioningManager.ensureProvisioned();
                 synchronized (this) { applySettings(provisioned); }
+                if (!MODE_HTTP.equals(transportMode)) {
+                    synchronized (this) { connecting = false; }
+                    reconnectNow();
+                    return;
+                }
                 updateState("LOGIN_SENT", "正在执行HTTP设备登录", null);
                 JSONObject login = httpGateway.postData(BackendHttpGateway.DEVICE_LOGIN,
                         new JSONObject().put("version", BuildConfig.VERSION_NAME));
                 requireLoginSuccess(login, "HTTP");
+                String runtimeToken = login.optString("token", "").trim();
+                if (!runtimeToken.isEmpty()) {
+                    JSONObject tokenSettings = settingsRepository.load();
+                    tokenSettings.put("runtimeToken", runtimeToken);
+                    settingsRepository.save(tokenSettings);
+                }
                 synchronized (this) {
                     connecting = false;
                     lastConnectedAt = System.currentTimeMillis();
@@ -235,12 +246,22 @@ public final class WebSocketConnectionManager {
                         : provisioningManager.ensureProvisioned();
                 forceCredentialRefresh = false;
                 synchronized (this) { applySettings(provisioned); }
+                if (!MODE_MQTT.equals(transportMode)) {
+                    synchronized (this) { connecting = false; }
+                    reconnectNow();
+                    return;
+                }
                 try {
                     connectMqttWithAvailableCredentials();
                 } catch (Exception transportAuthError) {
                     updateState("CONNECTING", "MQTT连接认证失败，正在刷新凭证", transportAuthError);
                     JSONObject refreshed = provisioningManager.refreshCredentials();
                     synchronized (this) { applySettings(refreshed); }
+                    if (!MODE_MQTT.equals(transportMode)) {
+                        synchronized (this) { connecting = false; }
+                        reconnectNow();
+                        return;
+                    }
                     connectMqttWithAvailableCredentials();
                 }
                 synchronized (this) { connecting = false; }
@@ -344,6 +365,11 @@ public final class WebSocketConnectionManager {
             try {
                 JSONObject provisioned = provisioningManager.ensureProvisioned();
                 synchronized (this) { applySettings(provisioned); }
+                if (!MODE_TCP.equals(transportMode)) {
+                    synchronized (this) { connecting = false; }
+                    reconnectNow();
+                    return;
+                }
                 Socket nextSocket = new Socket(tcpHost, tcpPort);
                 nextSocket.setKeepAlive(true);
                 nextSocket.setTcpNoDelay(true);

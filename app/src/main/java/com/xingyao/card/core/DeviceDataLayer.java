@@ -1,7 +1,5 @@
 package com.xingyao.card.core;
 
-import android.content.Context;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -39,7 +37,6 @@ public final class DeviceDataLayer {
         String transportMode();
     }
 
-    private final Context context;
     private final NativeSettingsRepository settingsRepository;
     private final DeviceStateStore stateStore;
     private final DeviceDataRepository dataRepository;
@@ -59,7 +56,7 @@ public final class DeviceDataLayer {
     private volatile boolean startupSyncCompleted;
     private volatile boolean stopped;
 
-    public DeviceDataLayer(Context context,
+    public DeviceDataLayer(
                            NativeSettingsRepository settingsRepository,
                            DeviceStateStore stateStore,
                            DeviceDataRepository dataRepository,
@@ -71,7 +68,6 @@ public final class DeviceDataLayer {
                            BackendHttpGateway httpGateway,
                            InboundCommandRepository inboundRepository,
                            DeviceCommandCoordinator.AppControl appControl) {
-        this.context = context.getApplicationContext();
         this.settingsRepository = settingsRepository;
         this.stateStore = stateStore;
         this.dataRepository = dataRepository;
@@ -99,6 +95,7 @@ public final class DeviceDataLayer {
         stopped = false;
         JSONObject safeSettings = settings == null ? new JSONObject() : settings;
         stateStore.configure(safeSettings);
+        updateAuthorizationSection(safeSettings);
         try { stateStore.updateSection("serial", "serial.statusChanged", serialPort.snapshot()); }
         catch (Exception ignored) { }
         try { stateStore.updateSection("socket", "socket.statusChanged", backendPort.snapshot()); }
@@ -159,12 +156,13 @@ public final class DeviceDataLayer {
     }
 
     private void applyRemoteSettings(JSONObject settings) throws JSONException {
-        applySettingsInternal(settings, false);
+        applySettingsInternal(settings, true);
     }
 
     private void applySettingsInternal(JSONObject settings, boolean reconnectBackend) throws JSONException {
         JSONObject safeSettings = settings == null ? new JSONObject() : settings;
         stateStore.configure(safeSettings);
+        updateAuthorizationSection(safeSettings);
         serialPort.configure(safeSettings);
         if (reconnectBackend) backendPort.configure(safeSettings);
         startupSyncCompleted = false;
@@ -199,7 +197,6 @@ public final class DeviceDataLayer {
                                String employeeId) throws Exception {
         JSONObject result = operationEngine.openDoor(slotNumber, administrator, source,
                 requestMsgId, employeeId);
-        stateStore.recordOperation("operation.openDoor.result", result);
         commandCoordinator.reportCardEvent(slotNumber, eventType, authType,
                 result.optString("operationId", ""), requestMsgId, employeeId);
         return result;
@@ -220,7 +217,6 @@ public final class DeviceDataLayer {
     public JSONObject openAllDoors(boolean administrator, String requestMsgId, String source)
             throws Exception {
         JSONObject result = operationEngine.openAllDoors(administrator, source, requestMsgId);
-        stateStore.recordOperation("operation.openAll.result", result);
         return result;
     }
 
@@ -388,6 +384,17 @@ public final class DeviceDataLayer {
             slotReportTask.cancel(false);
             slotReportTask = null;
         }
+    }
+
+    private void updateAuthorizationSection(JSONObject settings) {
+        JSONObject authorization = settings == null ? null : settings.optJSONObject("deviceAuthorization");
+        if (authorization == null) {
+            String activation = settings == null ? "" : settings.optString("activationStatus", "");
+            authorization = eventState("ACTIVATED".equalsIgnoreCase(activation)
+                    ? "AUTHORIZED" : "PENDING", "authorization",
+                    "ACTIVATED".equalsIgnoreCase(activation) ? "设备已激活" : "等待设备授权查询");
+        }
+        stateStore.updateSection("deviceAuthorization", "authorization.statusChanged", authorization);
     }
 
     private static JSONObject eventState(String state, String cmd, String message) {

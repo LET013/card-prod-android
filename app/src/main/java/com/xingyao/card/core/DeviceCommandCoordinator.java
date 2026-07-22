@@ -6,6 +6,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.LinkedHashMap;
 import java.util.Locale;
 
 /** Data-layer business command coordinator for MQTT commands and backend reports. */
@@ -33,6 +34,7 @@ public final class DeviceCommandCoordinator {
     private final BackendHttpGateway httpGateway;
     private final AppControl appControl;
     private final ConfigControl configControl;
+    private final LinkedHashMap<Integer, String> activeFaults = new LinkedHashMap<>();
 
     public DeviceCommandCoordinator(DeviceStateStore stateStore,
                                     NativeSettingsRepository settingsRepository,
@@ -182,23 +184,41 @@ public final class DeviceCommandCoordinator {
         }
     }
 
-    public void reportHardwareFault(JSONObject slot) {
+    public synchronized void reportHardwareFault(JSONObject slot) {
         if (slot == null) return;
+        int slotId = slot.optInt("slotNumber", -1);
+        if (slotId < 1) return;
         String status = slot.optString("status", "");
         String faultCode = slot.optString("faultCode", "");
         boolean hasFault = "CHARGING_FAULT".equals(status)
                 || "COMMUNICATION_FAULT".equals(status)
                 || "ILLEGAL_CARD".equals(status)
                 || !faultCode.trim().isEmpty();
-        if (!hasFault) return;
+        String previous = activeFaults.get(slotId);
+        if (!hasFault) {
+            if (previous == null) return;
+            activeFaults.remove(slotId);
+            try {
+                reportRuntimeEvent("hardwareFault", BackendHttpGateway.FAULT_REPORT,
+                        new JSONObject().put("deviceId", currentDeviceCode())
+                                .put("slotId", slotId).put("faultCode", 0)
+                                .put("faultMsg", "RECOVERED").put("recovered", true)
+                                .put("timestamp", System.currentTimeMillis()));
+            } catch (Exception ignored) { }
+            return;
+        }
+        String signature = status + "|" + faultCode + "|" + slot.optString("faultMessage", "");
+        if (signature.equals(previous)) return;
+        activeFaults.put(slotId, signature);
         try {
             JSONObject data = new JSONObject()
                     .put("deviceId", currentDeviceCode())
-                    .put("slotId", slot.optInt("slotNumber"))
+                    .put("slotId", slotId)
                     .put("faultCode", parseFaultCode(faultCode))
                     .put("faultMsg", slot.optString("faultMessage", status))
+                    .put("recovered", false)
                     .put("timestamp", System.currentTimeMillis());
-            reportRuntimeEvent("hardwareFault", "/api/v1/fault/report", data);
+            reportRuntimeEvent("hardwareFault", BackendHttpGateway.FAULT_REPORT, data);
         } catch (Exception ignored) { }
     }
 
@@ -309,11 +329,11 @@ public final class DeviceCommandCoordinator {
         JSONObject current = settingsRepository.load();
         JSONObject remote = httpGateway.getData(BackendHttpGateway.DEVICE_CONFIG);
         JSONObject saved = settingsRepository.save(DeviceConfigMapper.apply(current, remote));
-        if (configControl != null) configControl.apply(saved);
         complete(command, baseResponse(command, "syncConfigResp")
                 .put("code", 0).put("status", "SUCCESS").put("msg", "success")
                 .put("deviceCode", currentDeviceCode())
                 .put("configUpdatedAt", saved.optLong("remoteConfigUpdatedAt", 0L)), true);
+        if (configControl != null) configControl.apply(saved);
     }
 
     private void handleUnsupportedUpgrade(JSONObject command, boolean cancel) throws Exception {
@@ -351,7 +371,7 @@ public final class DeviceCommandCoordinator {
         settingsRepository.save(settings);
         stateStore.record("backend.logUpload", new JSONObject().put("enabled", enabled)
                 .put("operatorId", command.optString("operatorId", "")));
-        if (enabled) reportRuntimeEvent("logReport", "/api/v1/log/report",
+        if (enabled) reportRuntimeEvent("logReport", BackendHttpGateway.LOG_REPORT,
                 new JSONObject().put("level", "INFO").put("tag", "LOG_UPLOAD")
                         .put("content", "日志上传已开启")
                         .put("timestamp", System.currentTimeMillis()));

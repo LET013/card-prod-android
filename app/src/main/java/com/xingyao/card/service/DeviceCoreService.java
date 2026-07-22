@@ -143,7 +143,7 @@ public final class DeviceCoreService extends Service {
                     }
                 }, Math.max(0L, delayMs));
 
-        dataLayer = new DeviceDataLayer(this, settingsRepository, stateStore, dataRepository,
+        dataLayer = new DeviceDataLayer(settingsRepository, stateStore, dataRepository,
                 syncManager, serialPort, backendPort, arcFaceManager, templateCleaner, httpGateway,
                 new InboundCommandRepository(this), appControl);
         holder[0] = dataLayer;

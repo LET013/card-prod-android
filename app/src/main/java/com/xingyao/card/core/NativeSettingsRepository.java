@@ -18,7 +18,7 @@ public class NativeSettingsRepository {
     private static final int CURRENT_SCHEMA = 4;
 
     private static final Set<String> INTERNAL_ONLY_KEYS = new HashSet<>(Arrays.asList(
-            "deviceToken", "mqttPassword", "signingKey", "machineId", "clientId",
+            "deviceToken", "runtimeToken", "mqttPassword", "signingKey", "machineId", "clientId",
             "mqttClientId", "mqttUsername", "registerCode", "registerCodeExpireTime",
             "provisionedAt", "apiBaseUrl", "mqttBrokerUrl", "serverAddress",
             "versionInfo", "forceUpdate"
@@ -105,6 +105,7 @@ public class NativeSettingsRepository {
                 .put("machineId", "")
                 .put("channelId", "official")
                 .put("activationCode", "")
+                .put("runtimeToken", "")
 
                 // Runtime channel selection. HTTP is always used for provisioning/sync.
                 .put("backendTransport", BackendEndpointSettings.MODE_MQTT)

@@ -16,6 +16,7 @@ public final class DeviceProvisioningManager {
     private static final String API_ACTIVATE = "/api/v1/device/activate";
     private static final String API_VERIFY = "/api/v1/device/verify";
     private static final String API_CONFIG = "/api/v1/device/config";
+    private static final String API_AUTH_STATUS = "/api/v1/device/auth/status";
     private static final long CREDENTIAL_REFRESH_SKEW_MS = 5L * 60L * 1000L;
 
     private final Context context;
@@ -39,6 +40,13 @@ public final class DeviceProvisioningManager {
         String apiBaseUrl = requireHttpBaseUrl(settings);
         JSONObject remote = config(apiBaseUrl, settings);
         JSONObject mapped = DeviceConfigMapper.apply(settings, remote);
+        try {
+            mapped.put("deviceAuthorization", authStatus(apiBaseUrl, mapped));
+        } catch (Exception authorizationError) {
+            mapped.put("deviceAuthorization", new JSONObject()
+                    .put("state", "UNKNOWN")
+                    .put("message", "授权状态查询失败：" + authorizationError.getMessage()));
+        }
         mapped.put("provisionedAt", System.currentTimeMillis());
         return settingsRepository.save(mapped);
     }
@@ -77,6 +85,14 @@ public final class DeviceProvisioningManager {
             settings = performActivation(apiBaseUrl, settings);
         }
 
+        try {
+            JSONObject authorization = authStatus(apiBaseUrl, settings);
+            settings.put("deviceAuthorization", authorization);
+        } catch (Exception authorizationError) {
+            settings.put("deviceAuthorization", new JSONObject()
+                    .put("state", "UNKNOWN")
+                    .put("message", "授权状态查询失败：" + authorizationError.getMessage()));
+        }
         settings.put("provisionedAt", System.currentTimeMillis());
         return settingsRepository.save(settings);
     }
@@ -165,6 +181,17 @@ public final class DeviceProvisioningManager {
     private JSONObject config(String apiBaseUrl, JSONObject settings) throws Exception {
         return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl,
                 settings.optString("deviceToken")).get(API_CONFIG));
+    }
+
+    private JSONObject authStatus(String apiBaseUrl, JSONObject settings) throws Exception {
+        JSONObject data = BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl,
+                settings.optString("deviceToken")).get(API_AUTH_STATUS));
+        boolean authorized = data.optBoolean("authorized", false);
+        return new JSONObject().put("state", authorized ? "AUTHORIZED" : "UNAUTHORIZED")
+                .put("authorized", authorized)
+                .put("authExpireTime", data.optLong("authExpireTime", 0L))
+                .put("authType", data.optString("authType", ""))
+                .put("message", authorized ? "设备授权有效" : "设备未授权或授权已过期");
     }
 
     private JSONObject deviceBody(JSONObject settings) throws JSONException {

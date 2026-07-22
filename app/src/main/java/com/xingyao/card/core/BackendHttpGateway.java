@@ -105,7 +105,9 @@ public final class BackendHttpGateway {
     private BackendHttpClient client(JSONObject settings) {
         String base = baseUrl(settings);
         if (base.isEmpty()) throw new IllegalStateException("HTTP域名/IP尚未配置");
-        return new BackendHttpClient(base, settings.optString("deviceToken", ""));
+        String token = settings.optString("runtimeToken", "").trim();
+        if (token.isEmpty()) token = settings.optString("deviceToken", "");
+        return new BackendHttpClient(base, token);
     }
 
     public static String baseUrl(JSONObject settings) {
