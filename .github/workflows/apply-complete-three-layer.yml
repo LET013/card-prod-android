@@ -1,12 +1,9 @@
 name: Apply complete three-layer refactor
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/device-integration-architecture
-    paths:
-      - '.refactor/apply_remaining_three_layer.py'
-      - '.github/workflows/apply-complete-three-layer.yml'
+      - main
   workflow_dispatch:
 
 permissions:
