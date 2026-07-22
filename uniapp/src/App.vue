@@ -5,13 +5,11 @@ import { appState, applySlotStatus } from '@/state/appState.js'
 
 let hydrationPromise = null
 
-const hydrateNativeProjection = () => {
+const hydratePublicProjection = () => {
   if (hydrationPromise) return hydrationPromise
   hydrationPromise = Promise.allSettled([
     services.loadSettings(),
-    services.getRuntime(),
-    services.getSlots(),
-    services.searchEmployees('')
+    services.getSlots()
   ]).then((results) => {
     const failed = results.find((item) => item.status === 'rejected')
     appState.lastError = failed?.reason?.message || ''
@@ -25,7 +23,7 @@ onLaunch(() => {
   services.init()
   nativeBridge.on('native.ready', () => {
     appState.bridgeReady = true
-    hydrateNativeProjection()
+    hydratePublicProjection()
   })
   nativeBridge.on('serial.statusChanged', (data) => { if (data) appState.runtime.serial = data })
   nativeBridge.on('cabinet.slotStatus', (data) => {
