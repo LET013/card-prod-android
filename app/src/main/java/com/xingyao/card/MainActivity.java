@@ -22,6 +22,7 @@ import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
 import androidx.core.app.ActivityCompat;
 
+import com.xingyao.card.core.DeviceRuntimeRegistry;
 import com.xingyao.card.service.DeviceCoreService;
 
 import org.json.JSONException;
@@ -55,7 +56,7 @@ public class MainActivity extends AppCompatActivity {
         configureFullscreen();
         setContentView(R.layout.activity_main);
         startDeviceCoreService();
-        DeviceCoreService.setDeviceEventListener(this::sendBridgeEvent);
+        DeviceRuntimeRegistry.setUiListener(this::sendBridgeEvent);
         requestArcSoftDevicePermission();
         initViews();
         initManagers();
@@ -85,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
     private void requestArcSoftDevicePermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
                 ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-            DeviceCoreService.restartFaceRecognition();
+            DeviceRuntimeRegistry.requestFaceRestart();
             return;
         }
         ActivityCompat.requestPermissions(this,
@@ -97,7 +98,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_ARCSOFT_DEVICE_ID && grantResults.length > 0 &&
                 grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            DeviceCoreService.restartFaceRecognition();
+            DeviceRuntimeRegistry.requestFaceRestart();
         }
     }
 
@@ -370,7 +371,15 @@ public class MainActivity extends AppCompatActivity {
                     .put("employeeName", employeeName)
                     .put("deviceBound", true)
                     .put("message", enrollment ? "本机系统指纹授权成功" : "系统指纹验证成功");
-            DeviceCoreService.recordOperation("biometric.fingerprint." + operation.toLowerCase(), response);
+            DeviceRuntimeRegistry.record("biometric.fingerprint." + operation.toLowerCase(), response);
+            if (enrollment) {
+                try {
+                    DeviceRuntimeRegistry.require().markFingerprintAuthorized(employeeId, employeeName);
+                } catch (Exception error) {
+                    DeviceRuntimeRegistry.record("biometric.fingerprint.employeeUpdateFailed",
+                            new JSONObject().put("message", error.getMessage()));
+                }
+            }
             sendFingerprintEvent("SUCCESS", response.optString("message"), operation, 0);
             sendBridgeResponse(new JSONObject().put("type", "response").put("requestId", completedRequestId)
                     .put("success", true).put("data", response));
@@ -458,7 +467,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        DeviceCoreService.setDeviceEventListener(null);
+        DeviceRuntimeRegistry.setUiListener(null);
         stopLocalHttpServer();
         if (webViewManager != null) webViewManager.destroy();
         super.onDestroy();

@@ -16,7 +16,7 @@ import android.widget.TextView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import com.xingyao.card.service.DeviceCoreService;
+import com.xingyao.card.core.DeviceRuntimeRegistry;
 
 import org.json.JSONObject;
 
@@ -119,8 +119,8 @@ public class FaceEnrollmentActivity extends Activity implements SurfaceHolder.Ca
         worker.execute(() -> {
             try {
                 JSONObject result = MODE_VERIFY.equals(mode)
-                        ? DeviceCoreService.verifyFace(frame, previewWidth, previewHeight)
-                        : DeviceCoreService.enrollFace(employeeId, employeeName == null ? "" : employeeName, frame, previewWidth, previewHeight);
+                        ? DeviceRuntimeRegistry.require().verifyFace(frame, previewWidth, previewHeight)
+                        : DeviceRuntimeRegistry.require().enrollFace(employeeId, employeeName == null ? "" : employeeName, frame, previewWidth, previewHeight);
                 completed = true;
                 runOnUiThread(() -> finishWithSuccess(result));
             } catch (Exception error) {
