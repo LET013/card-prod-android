@@ -87,10 +87,12 @@ public final class BackendEndpointSettings {
 
         if (!raw.isEmpty()) {
             try {
-                String candidate = raw.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")
-                        ? raw : defaultScheme + "://" + raw;
+                boolean explicitScheme = raw.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*");
+                String candidate = explicitScheme ? raw : defaultScheme + "://" + raw;
                 URI uri = URI.create(candidate);
-                if (uri.getScheme() != null && !uri.getScheme().trim().isEmpty()) scheme = lower(uri.getScheme());
+                if (explicitScheme && uri.getScheme() != null && !uri.getScheme().trim().isEmpty()) {
+                    scheme = lower(uri.getScheme());
+                }
                 host = uri.getHost();
                 if (host == null || host.trim().isEmpty()) host = stripHost(raw);
                 if (uri.getPort() > 0) port = uri.getPort();
