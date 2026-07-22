@@ -46,7 +46,9 @@ public final class BackendHttpGateway {
 
     public JSONObject post(String path, JSONObject body) throws Exception {
         JSONObject settings = settingsRepository.load();
-        return runtimeClient(settings).post(path, body == null ? new JSONObject() : body);
+        BackendHttpClient client = DEVICE_LOGIN.equals(path)
+                ? deviceClient(settings) : runtimeClient(settings);
+        return client.post(path, body == null ? new JSONObject() : body);
     }
 
     public JSONObject postData(String path, JSONObject body) throws Exception {
