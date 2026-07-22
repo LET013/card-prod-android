@@ -16,7 +16,6 @@ import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.net.URI;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -31,17 +30,24 @@ import java.util.concurrent.TimeUnit;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
-/** Backend JSON transport. Supports MQTT and the legacy plain TCP socket protocol. */
-public class WebSocketConnectionManager {
+/**
+ * Backend transport adapter.
+ *
+ * MQTT supplies real-time bidirectional commands. HTTP supplies provisioning, login, heartbeat and
+ * documented upload endpoints but has no downlink command endpoint in V4.1. Plain TCP is retained
+ * only for legacy deployments.
+ */
+public final class WebSocketConnectionManager {
     public interface Listener {
         void onStatusChanged(JSONObject status);
         void onCommand(JSONObject command);
         void onMessage(JSONObject message);
     }
 
-    private static final String MODE_MQTT = "MQTT";
-    private static final String MODE_TCP = "TCP";
-    private static final long HEARTBEAT_INTERVAL_MS = 30000L;
+    private static final String MODE_MQTT = BackendEndpointSettings.MODE_MQTT;
+    private static final String MODE_HTTP = BackendEndpointSettings.MODE_HTTP;
+    private static final String MODE_TCP = BackendEndpointSettings.MODE_TCP;
+    private static final long DEFAULT_HEARTBEAT_INTERVAL_MS = 30000L;
     private static final long RECONNECT_DELAY_MS = 5000L;
     private static final long LOGIN_TIMEOUT_MS = 15000L;
     private static final int MQTT_KEEP_ALIVE_SECONDS = 60;
@@ -49,6 +55,7 @@ public class WebSocketConnectionManager {
 
     private final NativeSettingsRepository settingsRepository;
     private final DeviceProvisioningManager provisioningManager;
+    private final BackendHttpGateway httpGateway;
     private final Listener listener;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
     private final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
@@ -64,13 +71,15 @@ public class WebSocketConnectionManager {
     private volatile boolean connecting;
     private volatile String state = "DISCONNECTED";
     private volatile String message = "后端通信未启动";
+    private volatile boolean forceCredentialRefresh;
+
     private String transportMode = MODE_MQTT;
-    private String deviceId = "DEV001";
-    private String deviceCode = "DEV001";
+    private String deviceId = "";
+    private String deviceCode = "";
     private String clientId = "";
     private String brokerUri = "";
     private String mqttUsername = "";
-    private boolean mqttUsernameConfigured = false;
+    private boolean mqttUsernameConfigured;
     private String mqttPassword = "";
     private String signingKey = "";
     private String commandTopic = "";
@@ -78,7 +87,10 @@ public class WebSocketConnectionManager {
     private String eventTopic = "";
     private String heartbeatTopic = "";
     private String tcpHost = "";
-    private int tcpPort = 0;
+    private int tcpPort;
+    private String httpBaseUrl = "";
+    private long heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
+    private long heartbeatSequence;
     private long sentMessages;
     private long receivedMessages;
     private volatile long lastConnectedAt;
@@ -86,25 +98,28 @@ public class WebSocketConnectionManager {
     private volatile long lastMessageAt;
     private volatile String lastError = "";
 
-    public WebSocketConnectionManager(Context context, NativeSettingsRepository settingsRepository, Listener listener) {
+    public WebSocketConnectionManager(Context context, NativeSettingsRepository settingsRepository,
+                                      Listener listener) {
         this.settingsRepository = settingsRepository;
         this.provisioningManager = new DeviceProvisioningManager(context, settingsRepository);
+        this.httpGateway = new BackendHttpGateway(settingsRepository);
         this.listener = listener;
     }
 
     public synchronized void start() {
+        if (running) return;
         running = true;
         configure(loadSettingsQuietly());
     }
 
     public synchronized void configure(JSONObject settings) {
         applySettings(settings);
-        if (!running) return;
-        reconnectNow();
+        if (running) reconnectNow();
     }
 
     public synchronized void stop() {
         running = false;
+        connecting = false;
         cancelReconnect();
         stopHeartbeat();
         cancelLoginTimeout();
@@ -124,12 +139,15 @@ public class WebSocketConnectionManager {
                 .put("deviceCode", deviceCode)
                 .put("clientId", clientId)
                 .put("brokerUri", brokerUri)
+                .put("httpBaseUrl", httpBaseUrl)
                 .put("tcpHost", tcpHost)
                 .put("tcpPort", tcpPort)
                 .put("commandTopic", commandTopic)
                 .put("responseTopic", responseTopic)
                 .put("eventTopic", eventTopic)
                 .put("heartbeatTopic", heartbeatTopic)
+                .put("heartbeatIntervalMs", heartbeatIntervalMs)
+                .put("httpDownlinkSupported", false)
                 .put("sentMessages", sentMessages)
                 .put("receivedMessages", receivedMessages)
                 .put("transportConnected", isTransportConnected())
@@ -144,13 +162,19 @@ public class WebSocketConnectionManager {
         return "AUTHENTICATED".equals(state);
     }
 
+    public synchronized String transportMode() {
+        return transportMode;
+    }
+
     public void send(JSONObject payload) throws Exception {
-        String cmd = payload == null ? "" : payload.optString("cmd", "");
+        String cmd = payload == null ? "" : payload.optString("cmd", "").trim();
+        if (cmd.isEmpty()) throw new IllegalArgumentException("后端消息缺少cmd");
         boolean lifecycleMessage = "login".equals(cmd) || "heartbeat".equals(cmd);
         if (!lifecycleMessage && !"AUTHENTICATED".equals(state)) {
             throw new IllegalStateException("后端业务会话尚未认证，当前状态：" + state);
         }
-        if (MODE_TCP.equals(transportMode)) sendTcp(payload);
+        if (MODE_HTTP.equals(transportMode)) sendHttp(payload);
+        else if (MODE_TCP.equals(transportMode)) sendTcp(payload);
         else publishMqtt(payload);
     }
 
@@ -159,32 +183,64 @@ public class WebSocketConnectionManager {
         stopHeartbeat();
         cancelLoginTimeout();
         closeTransports();
-        if (MODE_TCP.equals(transportMode)) connectTcp();
+        if (MODE_HTTP.equals(transportMode)) connectHttp();
+        else if (MODE_TCP.equals(transportMode)) connectTcp();
         else connectMqtt();
     }
 
-    private void connectMqtt() {
-        if (brokerUri.isEmpty()) {
-            updateState("DISCONNECTED", "MQTT未配置 broker 地址", null);
+    private void connectHttp() {
+        if (httpBaseUrl.isEmpty()) {
+            updateState("DISCONNECTED", "HTTP域名/IP未配置", null);
             return;
         }
         if (connecting) return;
         connecting = true;
-        updateState("CONNECTING", "正在执行后端注册/激活流程", null);
+        updateState("CONNECTING", "正在执行HTTP注册、激活与配置流程", null);
         executor.execute(() -> {
             try {
-                JSONObject provisionedSettings = provisioningManager.refreshCredentials();
+                JSONObject provisioned = provisioningManager.ensureProvisioned();
+                synchronized (this) { applySettings(provisioned); }
+                updateState("LOGIN_SENT", "正在执行HTTP设备登录", null);
+                JSONObject login = httpGateway.postData(BackendHttpGateway.DEVICE_LOGIN,
+                        new JSONObject().put("version", BuildConfig.VERSION_NAME));
+                requireLoginSuccess(login, "HTTP");
                 synchronized (this) {
-                    applySettings(provisionedSettings);
+                    connecting = false;
+                    lastConnectedAt = System.currentTimeMillis();
+                    authenticatedAt = lastConnectedAt;
                 }
+                updateState("AUTHENTICATED",
+                        "HTTP业务登录成功；V4.1未定义HTTP下行指令，远程开门需MQTT", null);
+                startHeartbeat();
+            } catch (Exception error) {
+                synchronized (this) { connecting = false; }
+                updateState("ERROR", "HTTP登录失败：" + safeMessage(error), error);
+                scheduleReconnect();
+            }
+        });
+    }
+
+    private void connectMqtt() {
+        if (brokerUri.isEmpty()) {
+            updateState("DISCONNECTED", "MQTT域名/IP未配置", null);
+            return;
+        }
+        if (connecting) return;
+        connecting = true;
+        updateState("CONNECTING", "正在执行HTTP注册、激活与MQTT凭证获取", null);
+        executor.execute(() -> {
+            try {
+                JSONObject provisioned = forceCredentialRefresh
+                        ? provisioningManager.refreshCredentials()
+                        : provisioningManager.ensureProvisioned();
+                forceCredentialRefresh = false;
+                synchronized (this) { applySettings(provisioned); }
                 try {
                     connectMqttWithAvailableCredentials();
-                } catch (Exception authError) {
-                    updateState("CONNECTING", "MQTT认证失败，正在刷新后端下发凭证", authError);
-                    JSONObject refreshedSettings = provisioningManager.refreshCredentials();
-                    synchronized (this) {
-                        applySettings(refreshedSettings);
-                    }
+                } catch (Exception transportAuthError) {
+                    updateState("CONNECTING", "MQTT连接认证失败，正在刷新凭证", transportAuthError);
+                    JSONObject refreshed = provisioningManager.refreshCredentials();
+                    synchronized (this) { applySettings(refreshed); }
                     connectMqttWithAvailableCredentials();
                 }
                 synchronized (this) { connecting = false; }
@@ -198,13 +254,17 @@ public class WebSocketConnectionManager {
     }
 
     private void connectMqttWithAvailableCredentials() throws Exception {
-        if (brokerUri.isEmpty()) throw new IllegalStateException("MQTT未配置 broker 地址");
-        Exception lastError = null;
+        if (brokerUri.isEmpty()) throw new IllegalStateException("MQTT域名/IP未配置");
+        if (clientId.isEmpty()) throw new IllegalStateException("MQTT clientId尚未由激活接口下发");
+        if (mqttPassword.isEmpty()) throw new IllegalStateException("MQTT密码尚未由激活接口下发");
+        if (signingKey.isEmpty()) throw new IllegalStateException("MQTT签名密钥尚未由激活接口下发");
+
+        Exception lastException = null;
         for (String username : mqttUsernameCandidates()) {
             MqttAsyncClient nextClient = null;
             String authLabel = mqttAuthLabel(username);
             try {
-                updateState("CONNECTING", "正在连接 MQTT " + brokerUri + " auth=" + authLabel, null);
+                updateState("CONNECTING", "正在连接MQTT " + brokerUri + " auth=" + authLabel, null);
                 nextClient = new MqttAsyncClient(brokerUri, clientId, new MemoryPersistence());
                 final MqttAsyncClient callbackClient = nextClient;
                 nextClient.setCallback(new MqttCallbackExtended() {
@@ -212,14 +272,15 @@ public class WebSocketConnectionManager {
                         try {
                             lastConnectedAt = System.currentTimeMillis();
                             authenticatedAt = 0L;
-                            updateState("TRANSPORT_CONNECTED", String.format(Locale.US, "MQTT传输已连接 %s auth=%s", serverURI, authLabel), null);
+                            updateState("TRANSPORT_CONNECTED", "MQTT传输已连接 " + serverURI, null);
                             subscribeTopics(callbackClient);
-                            updateState("SUBSCRIBED", "MQTT指令Topic订阅完成", null);
-                            updateState("LOGIN_SENT", "正在发送MQTT登录请求", null);
+                            updateState("SUBSCRIBED", "MQTT下行与响应Topic订阅完成", null);
+                            updateState("LOGIN_SENT", "正在发送MQTT业务登录", null);
                             sendLogin();
                             startLoginTimeout();
                         } catch (Exception error) {
                             updateState("ERROR", "MQTT订阅/登录失败：" + safeMessage(error), error);
+                            closeTransports();
                             if (running) scheduleReconnect();
                         }
                     }
@@ -228,12 +289,14 @@ public class WebSocketConnectionManager {
                         stopHeartbeat();
                         cancelLoginTimeout();
                         authenticatedAt = 0L;
-                        updateState("ERROR", "MQTT连接断开：" + (cause == null ? "unknown" : cause.getMessage()), cause instanceof Exception ? (Exception) cause : null);
+                        updateState("ERROR", "MQTT连接断开：" + safeMessage(cause),
+                                cause instanceof Exception ? (Exception) cause : null);
                         if (running) scheduleReconnect();
                     }
 
                     @Override public void messageArrived(String topic, MqttMessage mqttMessage) {
-                        handleIncoming("mqtt:" + topic, mqttMessage == null ? null : new String(mqttMessage.getPayload(), StandardCharsets.UTF_8));
+                        handleIncoming("mqtt:" + topic, mqttMessage == null ? null
+                                : new String(mqttMessage.getPayload(), StandardCharsets.UTF_8));
                     }
 
                     @Override public void deliveryComplete(IMqttDeliveryToken token) { }
@@ -248,64 +311,39 @@ public class WebSocketConnectionManager {
                 options.setKeepAliveInterval(MQTT_KEEP_ALIVE_SECONDS);
                 options.setConnectionTimeout(MQTT_CONNECTION_TIMEOUT_SECONDS);
                 if (!username.isEmpty()) options.setUserName(username);
-                if (!mqttPassword.isEmpty()) options.setPassword(mqttPassword.toCharArray());
+                options.setPassword(mqttPassword.toCharArray());
                 nextClient.connect(options).waitForCompletion();
                 return;
             } catch (Exception error) {
-                lastError = error;
+                lastException = error;
                 synchronized (this) {
                     if (mqttClient == nextClient) mqttClient = null;
                 }
                 closeMqttQuietly(nextClient);
-                updateState("CONNECTING", "MQTT认证失败 auth=" + authLabel + "：" + safeMessage(error), error);
-                try { Thread.sleep(800L); } catch (InterruptedException interrupted) {
+                updateState("CONNECTING", "MQTT认证失败 auth=" + authLabel + "："
+                        + safeMessage(error), error);
+                try { Thread.sleep(500L); }
+                catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw interrupted;
                 }
             }
         }
-        throw lastError == null ? new IllegalStateException("MQTT连接失败") : lastError;
-    }
-
-    private List<String> mqttUsernameCandidates() {
-        ArrayList<String> candidates = new ArrayList<>();
-        if (mqttUsernameConfigured) addUnique(candidates, mqttUsername);
-        addUnique(candidates, "device_" + deviceCode);
-        addUnique(candidates, deviceCode);
-        addUnique(candidates, clientId);
-        addUnique(candidates, "");
-        return candidates;
-    }
-
-    private void addUnique(ArrayList<String> values, String value) {
-        String normalized = value == null ? "" : value.trim();
-        if (!values.contains(normalized)) values.add(normalized);
-    }
-
-    private String mqttAuthLabel(String username) {
-        String value = username == null ? "" : username.trim();
-        if (value.isEmpty()) return "none";
-        if (value.equals("device_" + deviceCode)) return "deviceCodePrefixed";
-        if (value.equals(deviceCode)) return "deviceCode";
-        if (value.equals(clientId)) return "clientId";
-        return "configured";
-    }
-
-    private void subscribeTopics(MqttAsyncClient client) throws Exception {
-        client.subscribe(commandTopic, 1).waitForCompletion();
-        if (!responseTopic.equals(commandTopic)) client.subscribe(responseTopic, 1).waitForCompletion();
+        throw lastException == null ? new IllegalStateException("MQTT连接失败") : lastException;
     }
 
     private void connectTcp() {
         if (tcpHost.isEmpty() || tcpPort <= 0) {
-            updateState("DISCONNECTED", "TCP未配置服务器地址或端口", null);
+            updateState("DISCONNECTED", "TCP域名/IP或端口未配置", null);
             return;
         }
         if (connecting) return;
         connecting = true;
-        updateState("CONNECTING", String.format(Locale.US, "正在连接 TCP %s:%d", tcpHost, tcpPort), null);
+        updateState("CONNECTING", "正在执行HTTP注册/激活后连接兼容TCP", null);
         executor.execute(() -> {
             try {
+                JSONObject provisioned = provisioningManager.ensureProvisioned();
+                synchronized (this) { applySettings(provisioned); }
                 Socket nextSocket = new Socket(tcpHost, tcpPort);
                 nextSocket.setKeepAlive(true);
                 nextSocket.setTcpNoDelay(true);
@@ -316,8 +354,9 @@ public class WebSocketConnectionManager {
                     lastConnectedAt = System.currentTimeMillis();
                 }
                 authenticatedAt = 0L;
-                updateState("TRANSPORT_CONNECTED", String.format(Locale.US, "TCP传输已连接 %s:%d", tcpHost, tcpPort), null);
-                updateState("LOGIN_SENT", "正在发送TCP登录请求", null);
+                updateState("TRANSPORT_CONNECTED", String.format(Locale.US,
+                        "TCP传输已连接 %s:%d", tcpHost, tcpPort), null);
+                updateState("LOGIN_SENT", "正在发送TCP业务登录", null);
                 sendLogin();
                 startLoginTimeout();
                 readTcpLoop(nextSocket);
@@ -347,7 +386,6 @@ public class WebSocketConnectionManager {
             closeTransports();
             stopHeartbeat();
             cancelLoginTimeout();
-            authenticatedAt = 0L;
             if (running) scheduleReconnect();
         }
     }
@@ -375,8 +413,7 @@ public class WebSocketConnectionManager {
             JSONObject payload = new JSONObject(text);
             receivedMessages++;
             lastMessageAt = System.currentTimeMillis();
-            payload.put("_source", source);
-            notifyMessage(payload);
+            notifyMessage(messageSummary(payload, source));
             String cmd = payload.optString("cmd", "");
             if ("loginResp".equals(cmd)) {
                 handleLoginResponse(payload);
@@ -387,9 +424,9 @@ public class WebSocketConnectionManager {
                 updateState("AUTH_REQUIRED", "收到业务指令但设备尚未完成登录认证", null);
                 return;
             }
-            notifyCommand(commandFromEnvelope(payload));
+            notifyCommand(commandFromEnvelope(payload, source));
         } catch (JSONException error) {
-            updateState("ERROR", "后端消息不是合法JSON：" + text, error);
+            updateState("ERROR", "后端消息不是合法JSON", error);
         }
     }
 
@@ -398,40 +435,40 @@ public class WebSocketConnectionManager {
             if (!"LOGIN_SENT".equals(state)) return;
             cancelLoginTimeout();
         }
-        JSONObject data = payload == null ? null : payload.optJSONObject("data");
-        int code = payload != null && payload.has("code")
-                ? payload.optInt("code", -1)
-                : data == null ? -1 : data.optInt("code", -1);
-        boolean explicitFailure = (payload != null && payload.has("success") && !payload.optBoolean("success", false))
-                || (data != null && data.has("success") && !data.optBoolean("success", false))
-                || code > 0;
-        String status = payload == null ? "" : payload.optString("status", "");
-        if (status.isEmpty() && data != null) status = data.optString("status", "");
-        if ("FAILED".equalsIgnoreCase(status) || "DENIED".equalsIgnoreCase(status)
-                || "AUTH_FAILED".equalsIgnoreCase(status)) explicitFailure = true;
-        if (explicitFailure) {
+        try {
+            requireLoginSuccess(payload, "MQTT/TCP");
+            authenticatedAt = System.currentTimeMillis();
+            updateState("AUTHENTICATED", "后台业务登录认证成功", null);
+            startHeartbeat();
+        } catch (Exception error) {
             stopHeartbeat();
             authenticatedAt = 0L;
-            String backendMessage = payload == null ? "" : payload.optString("msg", payload.optString("message", ""));
-            if (backendMessage.isEmpty() && data != null) backendMessage = data.optString("msg", data.optString("message", ""));
-            updateState("AUTH_FAILED", backendMessage.isEmpty() ? "后台拒绝设备登录" : backendMessage, null);
-            return;
+            forceCredentialRefresh = true;
+            updateState("AUTH_PROTOCOL_ERROR", safeMessage(error), error);
+            closeTransports();
+            if (running) scheduleReconnect();
         }
-        authenticatedAt = System.currentTimeMillis();
-        updateState("AUTHENTICATED", "后台业务登录认证成功", null);
-        startHeartbeat();
     }
 
-    private synchronized boolean isTransportConnected() {
-        if (MODE_TCP.equals(transportMode)) return tcpSocket != null && !tcpSocket.isClosed();
-        return mqttClient != null && mqttClient.isConnected();
+    private void requireLoginSuccess(JSONObject payload, String channel) {
+        JSONObject data = payload == null ? null : payload.optJSONObject("data");
+        Integer code = null;
+        if (payload != null && payload.has("code")) code = payload.optInt("code", Integer.MIN_VALUE);
+        else if (data != null && data.has("code")) code = data.optInt("code", Integer.MIN_VALUE);
+        if (code == null || (code != 0 && code != 200)) {
+            String backendMessage = payload == null ? "" : payload.optString("msg",
+                    payload.optString("message", ""));
+            if (backendMessage.isEmpty() && data != null) {
+                backendMessage = data.optString("msg", data.optString("message", ""));
+            }
+            throw new IllegalStateException(backendMessage.isEmpty()
+                    ? channel + " loginResp缺少明确成功code" : backendMessage);
+        }
     }
 
     private void sendLogin() throws Exception {
-        send(new JSONObject()
-                .put("cmd", "login")
-                .put("data", new JSONObject()
-                        .put("version", BuildConfig.VERSION_NAME)
+        send(new JSONObject().put("cmd", "login")
+                .put("data", new JSONObject().put("version", BuildConfig.VERSION_NAME)
                         .put("ip", "127.0.0.1")));
     }
 
@@ -470,16 +507,24 @@ public class WebSocketConnectionManager {
         stopHeartbeat();
         heartbeatTask = heartbeatExecutor.scheduleAtFixedRate(() -> {
             try {
-                send(new JSONObject()
-                        .put("cmd", "heartbeat")
-                        .put("data", new JSONObject())
-                        .put("timestamp", System.currentTimeMillis()));
+                if (MODE_HTTP.equals(transportMode)) {
+                    JSONObject result = httpGateway.postData(BackendHttpGateway.DEVICE_HEARTBEAT,
+                            new JSONObject().put("seq", ++heartbeatSequence));
+                    receivedMessages++;
+                    lastMessageAt = System.currentTimeMillis();
+                    notifyMessage(messageSummary(new JSONObject().put("cmd", "heartbeatResp")
+                            .put("data", result), "http"));
+                } else {
+                    send(new JSONObject().put("cmd", "heartbeat")
+                            .put("data", new JSONObject())
+                            .put("timestamp", System.currentTimeMillis()));
+                }
             } catch (Exception error) {
-                updateState("ERROR", "心跳发送失败：" + safeMessage(error), error);
+                updateState("ERROR", "心跳失败：" + safeMessage(error), error);
                 closeTransports();
-                scheduleReconnect();
+                if (running) scheduleReconnect();
             }
-        }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        }, heartbeatIntervalMs, heartbeatIntervalMs, TimeUnit.MILLISECONDS);
     }
 
     private synchronized void stopHeartbeat() {
@@ -493,19 +538,37 @@ public class WebSocketConnectionManager {
         if (mqttClient == null || !mqttClient.isConnected()) throw new IllegalStateException("MQTT未连接");
         JSONObject envelope = buildMqttEnvelope(payload);
         String topic = "heartbeat".equals(envelope.optString("cmd")) ? heartbeatTopic : eventTopic;
-        MqttMessage message = new MqttMessage(envelope.toString().getBytes(StandardCharsets.UTF_8));
-        message.setQos(1);
-        message.setRetained(false);
-        mqttClient.publish(topic, message).waitForCompletion();
+        MqttMessage mqttMessage = new MqttMessage(envelope.toString().getBytes(StandardCharsets.UTF_8));
+        mqttMessage.setQos("heartbeat".equals(envelope.optString("cmd")) ? 0 : 1);
+        mqttMessage.setRetained(false);
+        mqttClient.publish(topic, mqttMessage).waitForCompletion();
         sentMessages++;
     }
 
     private synchronized void sendTcp(JSONObject payload) throws Exception {
-        if (tcpSocket == null || tcpSocket.isClosed() || tcpOutput == null) throw new IllegalStateException("TCP未连接");
+        if (tcpSocket == null || tcpSocket.isClosed() || tcpOutput == null) {
+            throw new IllegalStateException("TCP未连接");
+        }
         byte[] bytes = (payload.toString() + "\n").getBytes(StandardCharsets.UTF_8);
         tcpOutput.write(bytes);
         tcpOutput.flush();
         sentMessages++;
+    }
+
+    private void sendHttp(JSONObject payload) throws Exception {
+        JSONObject result = httpGateway.sendCommand(payload);
+        sentMessages++;
+        receivedMessages++;
+        lastMessageAt = System.currentTimeMillis();
+        notifyMessage(messageSummary(new JSONObject()
+                .put("cmd", payload.optString("cmd") + "Resp")
+                .put("data", result), "http"));
+    }
+
+    private synchronized boolean isTransportConnected() {
+        if (MODE_HTTP.equals(transportMode)) return !httpBaseUrl.isEmpty() && "AUTHENTICATED".equals(state);
+        if (MODE_TCP.equals(transportMode)) return tcpSocket != null && !tcpSocket.isClosed();
+        return mqttClient != null && mqttClient.isConnected();
     }
 
     private void scheduleReconnect() {
@@ -536,75 +599,170 @@ public class WebSocketConnectionManager {
 
     private void closeMqttQuietly(MqttAsyncClient currentMqtt) {
         if (currentMqtt == null) return;
-        try { if (currentMqtt.isConnected()) currentMqtt.disconnectForcibly(1000, 1000); } catch (Exception ignored) { }
+        try {
+            if (currentMqtt.isConnected()) currentMqtt.disconnectForcibly(1000, 1000);
+        } catch (Exception ignored) { }
         try { currentMqtt.close(); } catch (Exception ignored) { }
     }
 
-    private void applySettings(JSONObject settings) {
-        deviceCode = optString(settings, "deviceCode", optString(settings, "deviceId", "DEV001")).trim();
-        if (deviceCode.isEmpty()) deviceCode = optString(settings, "deviceId", "DEV001").trim();
-        if (deviceCode.isEmpty()) deviceCode = "DEV001";
-        deviceId = deviceCode;
-        String configuredMode = optString(settings, "backendTransport", MODE_MQTT).trim().toUpperCase(Locale.US);
-        transportMode = MODE_TCP.equals(configuredMode) ? MODE_TCP : MODE_MQTT;
+    private void applySettings(JSONObject rawSettings) {
+        JSONObject settings;
+        try { settings = BackendEndpointSettings.normalize(rawSettings); }
+        catch (JSONException error) { settings = rawSettings == null ? new JSONObject() : rawSettings; }
 
-        String configuredClientId = optString(settings, "mqttClientId", optString(settings, "clientId", "")).trim();
+        deviceCode = optString(settings, "deviceCode", optString(settings, "deviceId", "")).trim();
+        deviceId = optString(settings, "deviceId", deviceCode).trim();
+        String configuredMode = optString(settings, "backendTransport", MODE_MQTT)
+                .trim().toUpperCase(Locale.US);
+        transportMode = MODE_HTTP.equals(configuredMode) ? MODE_HTTP
+                : MODE_TCP.equals(configuredMode) ? MODE_TCP : MODE_MQTT;
+
+        String configuredClientId = optString(settings, "mqttClientId",
+                optString(settings, "clientId", "")).trim();
         String machineId = optString(settings, "machineId", "").trim();
-        clientId = configuredClientId.isEmpty() ? "device_" + (machineId.isEmpty() ? deviceCode : machineId) : configuredClientId;
+        clientId = configuredClientId.isEmpty()
+                ? "device_" + (machineId.isEmpty() ? deviceCode : machineId) : configuredClientId;
         mqttUsername = optString(settings, "mqttUsername", "").trim();
         mqttUsernameConfigured = !mqttUsername.isEmpty();
         mqttPassword = optString(settings, "mqttPassword", "");
         signingKey = optString(settings, "signingKey", "");
-        brokerUri = buildBrokerUri(settings);
+        brokerUri = BackendEndpointSettings.mqttBrokerUrl(settings);
+        httpBaseUrl = BackendEndpointSettings.httpBaseUrl(settings);
+        tcpHost = BackendEndpointSettings.tcpHost(settings);
+        tcpPort = parsePort(optString(settings, "tcpPort", ""), 9009);
+
         commandTopic = topic(settings, "mqttCommandTopic", "card/" + deviceCode + "/down");
         responseTopic = topic(settings, "mqttResponseTopic", "card/" + deviceCode + "/down/response");
         eventTopic = topic(settings, "mqttEventTopic", "card/" + deviceCode + "/up");
         heartbeatTopic = topic(settings, "mqttHeartbeatTopic", "card/" + deviceCode + "/heartbeat");
-
-        HostPort tcp = buildTcpHostPort(settings);
-        tcpHost = tcp.host;
-        tcpPort = tcp.port;
+        heartbeatIntervalMs = parsePositiveLong(optString(settings,
+                MODE_HTTP.equals(transportMode) ? "httpHeartbeatIntervalMs" : "mqttHeartbeatIntervalMs", ""),
+                DEFAULT_HEARTBEAT_INTERVAL_MS);
     }
 
-    private String buildBrokerUri(JSONObject settings) {
-        String explicit = optString(settings, "mqttBrokerUrl", "").trim();
-        if (!explicit.isEmpty()) return normalizeBrokerUri(explicit, 48419);
-        String address = optString(settings, "serverAddress", "").trim();
-        int port = parsePort(optString(settings, "mqttPort", ""), 48419);
-        if (address.isEmpty()) return "tcp://119.146.88.108:48419";
-        return normalizeBrokerUri(address, port);
+    private List<String> mqttUsernameCandidates() {
+        ArrayList<String> candidates = new ArrayList<>();
+        if (mqttUsernameConfigured) addUnique(candidates, mqttUsername);
+        // V4.1 does not define a username field. These compatibility candidates are retained until
+        // the broker credential contract explicitly identifies the username.
+        addUnique(candidates, deviceCode);
+        addUnique(candidates, clientId);
+        addUnique(candidates, "");
+        return candidates;
     }
 
-    private HostPort buildTcpHostPort(JSONObject settings) {
-        String address = optString(settings, "serverAddress", "").trim();
-        int port = parsePort(optString(settings, "tcpPort", ""), 9009);
-        if (address.isEmpty()) return new HostPort("", port);
-        try {
-            URI uri = address.contains("://") ? URI.create(address) : URI.create("tcp://" + address);
-            String host = uri.getHost();
-            if (host == null || host.isEmpty()) host = stripHost(address);
-            int parsedPort = "tcp".equalsIgnoreCase(uri.getScheme()) && uri.getPort() > 0 ? uri.getPort() : port;
-            return new HostPort(host, parsedPort);
-        } catch (Exception ignored) {
-            return new HostPort(stripHost(address), port);
+    private static void addUnique(ArrayList<String> values, String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (!values.contains(normalized)) values.add(normalized);
+    }
+
+    private String mqttAuthLabel(String username) {
+        String value = username == null ? "" : username.trim();
+        if (value.isEmpty()) return "none";
+        if (value.equals(deviceCode)) return "deviceCode";
+        if (value.equals(clientId)) return "clientId";
+        return "configured";
+    }
+
+    private void subscribeTopics(MqttAsyncClient client) throws Exception {
+        client.subscribe(commandTopic, 1).waitForCompletion();
+        if (!responseTopic.equals(commandTopic)) client.subscribe(responseTopic, 1).waitForCompletion();
+    }
+
+    private JSONObject commandFromEnvelope(JSONObject envelope, String source) throws JSONException {
+        JSONObject data = envelope.optJSONObject("data");
+        JSONObject command = data == null ? new JSONObject() : new JSONObject(data.toString());
+        command.put("cmd", envelope.optString("cmd", command.optString("cmd", "")))
+                .put("msgId", envelope.optString("msgId", command.optString("msgId", "")))
+                .put("timestamp", envelope.optLong("timestamp", command.optLong("timestamp", 0L)))
+                .put("_source", source == null ? "" : source);
+        // V4.1 downlink messages intentionally do not contain sign or deviceCode. Preserve them only
+        // when a future/legacy server explicitly sends them.
+        if (envelope.has("deviceCode")) command.put("deviceCode", envelope.optString("deviceCode", ""));
+        if (envelope.has("sign")) command.put("sign", envelope.optString("sign", ""));
+        return command;
+    }
+
+    private JSONObject buildMqttEnvelope(JSONObject payload) throws Exception {
+        String cmd = payload == null ? "" : payload.optString("cmd", "");
+        if (cmd.trim().isEmpty()) throw new IllegalArgumentException("MQTT消息缺少cmd");
+        JSONObject data = mqttData(payload);
+        long timestamp = System.currentTimeMillis();
+        String msgId = payload.optString("msgId", "");
+        if (msgId.trim().isEmpty()) {
+            msgId = "msg_" + timestamp + String.format(Locale.US, "%03d", new Random().nextInt(1000));
         }
+        String canonicalData = data.length() == 0 ? "{}" : data.toString();
+        JSONObject envelope = new JSONObject()
+                .put("msgId", msgId)
+                .put("cmd", cmd)
+                .put("timestamp", timestamp)
+                .put("deviceCode", deviceCode)
+                .put("data", data);
+        envelope.put("sign", sign(msgId, cmd, timestamp, canonicalData));
+        return envelope;
     }
 
-    private static String normalizeBrokerUri(String value, int fallbackPort) {
-        String trimmed = value == null ? "" : value.trim();
-        if (trimmed.isEmpty()) return "";
-        try {
-            URI uri = trimmed.contains("://") ? URI.create(trimmed) : URI.create("tcp://" + trimmed);
-            String scheme = "ssl".equalsIgnoreCase(uri.getScheme()) || "mqtts".equalsIgnoreCase(uri.getScheme()) ? "ssl" : "tcp";
-            String host = uri.getHost();
-            if (host == null || host.isEmpty()) host = stripHost(trimmed);
-            int port = ("tcp".equalsIgnoreCase(uri.getScheme()) || "ssl".equalsIgnoreCase(uri.getScheme())
-                    || "mqtt".equalsIgnoreCase(uri.getScheme()) || "mqtts".equalsIgnoreCase(uri.getScheme()))
-                    && uri.getPort() > 0 ? uri.getPort() : fallbackPort;
-            return scheme + "://" + host + ":" + port;
-        } catch (Exception ignored) {
-            return "tcp://" + stripHost(trimmed) + ":" + fallbackPort;
+    private static JSONObject mqttData(JSONObject payload) throws JSONException {
+        JSONObject explicit = payload.optJSONObject("data");
+        if (explicit != null) return new JSONObject(explicit.toString());
+        JSONObject data = new JSONObject();
+        java.util.Iterator<String> keys = payload.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if ("cmd".equals(key) || "msgId".equals(key) || "timestamp".equals(key)
+                    || "deviceId".equals(key) || "deviceCode".equals(key) || "sign".equals(key)
+                    || key.startsWith("_")) continue;
+            data.put(key, payload.opt(key));
         }
+        return data;
+    }
+
+    private String sign(String msgId, String cmd, long timestamp, String canonicalData) throws Exception {
+        if (signingKey == null || signingKey.trim().isEmpty()) {
+            throw new IllegalStateException("MQTT签名密钥为空");
+        }
+        String input = msgId + ":" + cmd + ":" + timestamp + ":" + canonicalData;
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(signingKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        return Base64.encodeToString(mac.doFinal(input.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP);
+    }
+
+    private static JSONObject messageSummary(JSONObject payload, String source) throws JSONException {
+        JSONObject result = new JSONObject()
+                .put("source", source == null ? "" : source)
+                .put("cmd", payload == null ? "" : payload.optString("cmd", ""))
+                .put("msgId", payload == null ? "" : payload.optString("msgId", ""))
+                .put("timestamp", payload == null ? 0L : payload.optLong("timestamp", 0L));
+        if (payload != null && payload.has("code")) result.put("code", payload.opt("code"));
+        if (payload != null && payload.has("status")) result.put("status", payload.opt("status"));
+        return result;
+    }
+
+    private static int findJsonStart(StringBuilder buffer) {
+        for (int index = 0; index < buffer.length(); index++) {
+            if (buffer.charAt(index) == '{') return index;
+        }
+        return -1;
+    }
+
+    private static int findJsonEnd(StringBuilder buffer) {
+        boolean inString = false;
+        boolean escaped = false;
+        int depth = 0;
+        for (int index = 0; index < buffer.length(); index++) {
+            char ch = buffer.charAt(index);
+            if (escaped) { escaped = false; continue; }
+            if (ch == '\\') { escaped = inString; continue; }
+            if (ch == '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (ch == '{') depth++;
+            else if (ch == '}') {
+                depth--;
+                if (depth == 0) return index;
+            }
+        }
+        return -1;
     }
 
     private JSONObject loadSettingsQuietly() {
@@ -622,7 +780,9 @@ public class WebSocketConnectionManager {
     }
 
     private void notifyStatus() {
-        if (listener != null) try { listener.onStatusChanged(snapshot()); } catch (JSONException ignored) { }
+        if (listener == null) return;
+        try { listener.onStatusChanged(snapshot()); }
+        catch (JSONException ignored) { }
     }
 
     private void notifyCommand(JSONObject command) {
@@ -633,105 +793,9 @@ public class WebSocketConnectionManager {
         if (listener != null) listener.onMessage(data);
     }
 
-    private static int findJsonStart(StringBuilder buffer) {
-        for (int index = 0; index < buffer.length(); index++) if (buffer.charAt(index) == '{') return index;
-        return -1;
-    }
-
-    private static int findJsonEnd(StringBuilder buffer) {
-        boolean inString = false;
-        boolean escaped = false;
-        int depth = 0;
-        for (int index = 0; index < buffer.length(); index++) {
-            char ch = buffer.charAt(index);
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-            if (ch == '\\') {
-                escaped = inString;
-                continue;
-            }
-            if (ch == '"') {
-                inString = !inString;
-                continue;
-            }
-            if (inString) continue;
-            if (ch == '{') depth++;
-            else if (ch == '}') {
-                depth--;
-                if (depth == 0) return index;
-            }
-        }
-        return -1;
-    }
-
-    private static String stripHost(String value) {
-        String result = value.replaceFirst("^[a-zA-Z]+://", "");
-        int slash = result.indexOf('/');
-        if (slash >= 0) result = result.substring(0, slash);
-        int colon = result.indexOf(':');
-        if (colon >= 0) result = result.substring(0, colon);
-        return result;
-    }
-
     private static String topic(JSONObject object, String key, String fallback) {
         String value = optString(object, key, "").trim();
         return value.isEmpty() ? fallback : value;
-    }
-
-    private JSONObject commandFromEnvelope(JSONObject envelope) throws JSONException {
-        JSONObject data = envelope.optJSONObject("data");
-        JSONObject command = data == null ? new JSONObject() : new JSONObject(data.toString());
-        command.put("cmd", envelope.optString("cmd", command.optString("cmd", "")));
-        command.put("msgId", envelope.optString("msgId", command.optString("msgId", "")));
-        command.put("timestamp", envelope.optLong("timestamp", command.optLong("timestamp", 0L)));
-        command.put("deviceCode", envelope.optString("deviceCode", command.optString("deviceCode", "")));
-        command.put("_source", envelope.optString("_source", ""));
-        command.put("_envelope", envelope);
-        return command;
-    }
-
-    private JSONObject buildMqttEnvelope(JSONObject payload) throws Exception {
-        String cmd = payload == null ? "" : payload.optString("cmd", "");
-        if (cmd.trim().isEmpty()) throw new IllegalArgumentException("MQTT消息缺少cmd");
-        JSONObject data = mqttData(payload);
-        long timestamp = System.currentTimeMillis();
-        String msgId = payload.optString("msgId", "");
-        if (msgId.trim().isEmpty()) msgId = "msg_" + timestamp + String.format(Locale.US, "%03d", new Random().nextInt(1000));
-        String canonicalData = data.length() == 0 ? "{}" : data.toString();
-        JSONObject envelope = new JSONObject()
-                .put("msgId", msgId)
-                .put("cmd", cmd)
-                .put("timestamp", timestamp)
-                .put("deviceCode", deviceCode)
-                .put("data", data);
-        envelope.put("sign", sign(msgId, cmd, timestamp, canonicalData));
-        return envelope;
-    }
-
-    private JSONObject mqttData(JSONObject payload) throws JSONException {
-        JSONObject explicit = payload.optJSONObject("data");
-        if (explicit != null) return explicit;
-        JSONObject data = new JSONObject();
-        java.util.Iterator<String> keys = payload.keys();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            if ("cmd".equals(key) || "msgId".equals(key) || "timestamp".equals(key) || "deviceId".equals(key)
-                    || "deviceCode".equals(key) || "sign".equals(key) || "_source".equals(key) || "_envelope".equals(key)) {
-                continue;
-            }
-            data.put(key, payload.opt(key));
-        }
-        return data;
-    }
-
-    private String sign(String msgId, String cmd, long timestamp, String canonicalData) throws Exception {
-        if (signingKey == null || signingKey.trim().isEmpty()) throw new IllegalStateException("MQTT签名密钥为空");
-        String input = msgId + ":" + cmd + ":" + timestamp + ":" + canonicalData;
-        Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(signingKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-        return Base64.encodeToString(mac.doFinal(input.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP);
     }
 
     private static String optString(JSONObject object, String key, String fallback) {
@@ -741,23 +805,25 @@ public class WebSocketConnectionManager {
     private static int parsePort(String value, int fallback) {
         try {
             int port = Integer.parseInt(value);
-            return port > 0 && port <= 65535 ? port : fallback;
+            return port >= 1 && port <= 65535 ? port : fallback;
         } catch (Exception ignored) {
             return fallback;
         }
     }
 
-    private static String safeMessage(Exception error) {
-        String value = error == null ? "" : error.getMessage();
-        return value == null || value.trim().isEmpty() ? (error == null ? "unknown" : error.getClass().getSimpleName()) : value;
+    private static long parsePositiveLong(String value, long fallback) {
+        try {
+            long result = Long.parseLong(value);
+            return result > 0L ? result : fallback;
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
-    private static final class HostPort {
-        final String host;
-        final int port;
-        HostPort(String host, int port) {
-            this.host = host == null ? "" : host;
-            this.port = port;
-        }
+    private static String safeMessage(Throwable error) {
+        if (error == null) return "unknown";
+        String value = error.getMessage();
+        return value == null || value.trim().isEmpty()
+                ? error.getClass().getSimpleName() : value;
     }
 }
