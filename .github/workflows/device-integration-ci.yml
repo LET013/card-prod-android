@@ -300,7 +300,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           for name in [
-              'uniapp/src/pages/config/config.vue',
               'uniapp/src/pages/serial-demo/serial-demo.vue',
               'uniapp/src/pages/splash/splash.vue',
           ]:
