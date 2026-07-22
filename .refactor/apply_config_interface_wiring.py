@@ -1,12 +1,13 @@
 from pathlib import Path
 
 
-def replace(path: str, old: str, new: str) -> None:
+def replace(path: str, old: str, new: str, count=None) -> None:
     file = Path(path)
     text = file.read_text(encoding="utf-8")
     if old not in text:
         raise RuntimeError(f"missing replacement in {path}: {old[:140]!r}")
-    file.write_text(text.replace(old, new), encoding="utf-8")
+    updated = text.replace(old, new) if count is None else text.replace(old, new, count)
+    file.write_text(updated, encoding="utf-8")
 
 
 # Data layer no longer carries an unused Context, and the operation state schema has one writer.
@@ -220,11 +221,8 @@ replace("app/src/main/java/com/xingyao/card/core/DeviceProvisioningManager.java"
         '''    private static final String API_CONFIG = "/api/v1/device/config";
     private static final String API_AUTH_STATUS = "/api/v1/device/auth/status";
 ''')
-replace("app/src/main/java/com/xingyao/card/core/DeviceProvisioningManager.java",
-        '''        settings.put("provisionedAt", System.currentTimeMillis());
-        return settingsRepository.save(settings);
-''',
-        '''        try {
+# Add authorization query to both refreshRemoteConfig and ensureProvisioned returns.
+auth_block = '''        try {
             JSONObject authorization = authStatus(apiBaseUrl, settings);
             settings.put("deviceAuthorization", authorization);
         } catch (Exception authorizationError) {
@@ -234,8 +232,25 @@ replace("app/src/main/java/com/xingyao/card/core/DeviceProvisioningManager.java"
         }
         settings.put("provisionedAt", System.currentTimeMillis());
         return settingsRepository.save(settings);
-''', 1)
-# The first occurrence above is in ensureProvisioned; add method near config().
+'''
+replace("app/src/main/java/com/xingyao/card/core/DeviceProvisioningManager.java",
+        '''        mapped.put("provisionedAt", System.currentTimeMillis());
+        return settingsRepository.save(mapped);
+''',
+        '''        try {
+            mapped.put("deviceAuthorization", authStatus(apiBaseUrl, mapped));
+        } catch (Exception authorizationError) {
+            mapped.put("deviceAuthorization", new JSONObject()
+                    .put("state", "UNKNOWN")
+                    .put("message", "授权状态查询失败：" + authorizationError.getMessage()));
+        }
+        mapped.put("provisionedAt", System.currentTimeMillis());
+        return settingsRepository.save(mapped);
+''')
+replace("app/src/main/java/com/xingyao/card/core/DeviceProvisioningManager.java",
+        '''        settings.put("provisionedAt", System.currentTimeMillis());
+        return settingsRepository.save(settings);
+''', auth_block, 1)
 replace("app/src/main/java/com/xingyao/card/core/DeviceProvisioningManager.java",
         '''    private JSONObject config(String apiBaseUrl, JSONObject settings) throws Exception {
         return BackendHttpClient.dataObject(new BackendHttpClient(apiBaseUrl,
