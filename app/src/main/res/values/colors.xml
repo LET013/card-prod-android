@@ -1,0 +1,7 @@
+<resources>
+    <color name="primary_blue">#1F76FF</color>
+    <color name="primary_dark_blue">#0A53C4</color>
+    <color name="page_light_blue">#E6F0FF</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

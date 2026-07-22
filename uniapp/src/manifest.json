@@ -1,0 +1,29 @@
+{
+    "name" : "发卡机Android客户端",
+    "appid" : "__UNI__0CC8693",
+    "description" : "发卡机Android客户端",
+    "versionName" : "1.0.0",
+    "versionCode" : "100",
+    "transformPx" : false,
+    "h5" : {
+        "title" : "发卡机客户端",
+        "router" : {
+            "mode" : "hash",
+            "base" : "./"
+        },
+        "optimization" : {
+            "treeShaking" : {
+                "enable" : true
+            }
+        }
+    },
+    "mp-weixin" : {
+        "appid" : "",
+        "setting" : {
+            "urlCheck" : false
+        },
+        "usingComponents" : true
+    },
+    "vueVersion" : "3",
+    "locale" : "zh-Hans"
+}

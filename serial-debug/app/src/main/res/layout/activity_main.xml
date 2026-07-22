@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:background="#1A1A2E"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🔌 串口调试工具"
+        android:textColor="#00FF88"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="工作卡通信协议 V1.5"
+        android:textColor="#888"
+        android:textSize="13sp"
+        android:layout_marginTop="8dp" />
+
+    <Button
+        android:id="@+id/btnEnterDebug"
+        android:layout_width="200dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="32dp"
+        android:text="进入调试面板"
+        android:textColor="#000"
+        android:textSize="16sp"
+        android:background="#00FF88" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="支持: 查询·开门·LED·版本·原始HEX·自动轮询"
+        android:textColor="#666"
+        android:textSize="11sp"
+        android:layout_marginTop="16dp" />
+</LinearLayout>

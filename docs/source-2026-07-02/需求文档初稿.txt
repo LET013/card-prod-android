@@ -1,0 +1,523 @@
+智能发卡机系统 - 需求与通信协议文档
+一、需求文档
+1. 项目概述
+本项目为智能发卡机系统，包含Android终端APP与后台管理系统。系统通过串口控制硬件卡位，通过HTTP和Socket与后台通信，实现卡位管理、人员认证（人脸/指纹）、远程控制等功能。
+
+2. 系统架构
+终端APP：运行于发卡机Android设备，负责UI交互、硬件控制、生物识别、与后台通信。
+
+后台管理系统：Web端管理平台，负责终端管理、员工管理、生物特征库管理、指令下发与日志监控。
+
+通信方式：
+
+HTTP：用于取还卡上报、设备激活、配置拉取等请求。
+
+Socket长连接：用于人员同步、远程指令、实时状态上报。
+
+3. 终端APP功能需求
+3.1 基础功能
+功能点	说明
+自启动	设备开机后APP自动启动
+系统级保活	防止APP被系统杀死
+3.2 主界面功能
+功能点	说明
+卡位网格展示	10×10网格展示100个卡位状态（颜色区分）
+卡位详情查看	点击卡位弹出详情（卡号、状态、电压、电流等）
+统计信息展示	显示空柜/充电中/已充满/故障数量
+管理员入口	密码验证进入管理员模式
+人脸识别启动	触发人脸采集与识别流程
+指纹识别启动	触发指纹采集与识别流程
+3.3 APP配置功能
+功能点	说明
+通信参数	波特率、轮询方式、设备ID
+网络参数	服务器IP、TCP端口、HTTP端口
+识别参数	人脸阈值、镜头旋转角度
+授权管理	Token获取开关、授权状态、人脸引擎激活
+3.4 管理员模式功能
+功能点	说明
+一键弹卡	弹所有卡（二次确认）
+独立操作权限	不受服务器限制，支持多管理员角色
+3.5 管理界面功能
+功能点	说明
+人脸/指纹注册	下发/注册生物特征
+人员管理	查看已下发人员，支持搜索新增
+历史记录	开门/还卡记录
+参数设置	调整识别引擎参数
+设备设置	修改ID、卡位数量
+系统授权	设备授权操作
+重启应用	使配置生效
+3.6 生物识别功能
+功能点	说明
+人脸采集识别	实时采集比对（虹软SDK）
+指纹采集识别	实时采集比对
+结果处理	成功开门/失败重试
+3.7 卡位详情功能
+字段	说明
+柜门号、卡号	编号信息
+工作状态、在位状态	当前状态
+卡状态（正常/非法）	合法性
+故障码、电压、电流	硬件监控
+3.8 通信功能
+功能	说明
+HTTP	设备激活、取还卡上报、配置拉取
+Socket长连接	人员同步、远程指令、状态上报
+串口	卡位查询、发卡、开门、LED控制、OTA
+3.9 异常处理
+日志记录、异常上报、重连机制
+
+4. 后台管理系统功能需求
+模块	功能点	说明
+整体框架	登录、角色权限、配置	基础支撑
+终端管理	增删改查终端	含注册码生成、指令下发
+实时通信日志	实时查看指令交互
+终端操作日志	1个月内完整日志
+激活码管理	虹软激活码分配记录
+设备管理员	3角色：管理员/维护/开发
+员工管理	基础信息管理	增删改查员工
+人脸/指纹库	员工-特征-设备关系管理
+Socket通信	基础协议	登入/登出/心跳
+指令下发	同步人员、远程发卡、状态查询
+上报协议	状态上报、取还卡上报、日志上报
+二、APP与后台通信协议文档
+1. 概述
+HTTP接口：短连接，用于业务上报、设备激活、配置拉取等。
+
+Socket长连接：保持在线，用于实时指令下发与状态上报。
+
+2. HTTP接口定义
+2.1 设备激活接口
+2.1.1 获取注册码（APP → 后台）
+设备首次启动或重置后，通过设备ID向后台申请注册码。
+
+URL：POST /api/v1/device/activate
+
+请求体：
+
+json
+{
+  "deviceId": "DEV001",
+  "mac": "AA:BB:CC:DD:EE:FF",
+  "model": "FJ-100",
+  "version": "1.0.0"
+}
+响应：
+
+json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "registerCode": "ABC123XYZ",
+    "status": "ACTIVATED" | "PENDING_APPROVAL",
+    "expireTime": 1735689600000
+  }
+}
+2.1.2 激活验证（APP → 后台）
+用户输入注册码后，APP向后台验证注册码有效性。
+
+URL：POST /api/v1/device/verify
+
+请求体：
+
+json
+{
+  "deviceId": "DEV001",
+  "registerCode": "ABC123XYZ"
+}
+响应：
+
+json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "valid": true,
+    "token": "session_token",
+    "expireTime": 1735689600000,
+    "deviceName": "一楼大厅发卡机"
+  }
+}
+2.1.3 设备授权状态查询（APP → 后台）
+APP定期查询设备授权状态，用于判断是否允许正常使用。
+
+URL：GET /api/v1/device/auth/status?deviceId=DEV001
+
+响应：
+
+json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "isAuthorized": true,
+    "authorizedUntil": 1735689600000,
+    "daysRemaining": 365,
+    "features": ["FACE", "FINGER", "REMOTE_OPEN"]
+  }
+}
+2.1.4 在线授权续期（APP → 后台）
+URL：POST /api/v1/device/auth/renew
+
+请求体：
+
+json
+{
+  "deviceId": "DEV001",
+  "token": "session_token"
+}
+响应：
+
+json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "newExpireTime": 1767225600000,
+    "daysAdded": 365
+  }
+}
+2.2 取卡/还卡上报
+URL：POST /api/v1/card/event
+
+请求体：
+
+json
+{
+  "deviceId": "DEV001",
+  "cardNo": "123456",
+  "eventType": "TAKE" | "RETURN",
+  "slotId": 1,
+  "timestamp": 1700000000000,
+  "authType": "FACE" | "FINGER" | "ADMIN"
+}
+响应：
+
+json
+{
+  "code": 0,
+  "msg": "success"
+}
+2.3 设备配置拉取
+URL：GET /api/v1/device/config?deviceId=DEV001
+
+响应：
+
+json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "baudRate": 9600,
+    "groupSize": 10,
+    "totalSlots": 100,
+    "pollingInterval": 1000,
+    "serverIp": "192.168.1.100",
+    "tcpPort": 8888,
+    "httpPort": 8080,
+    "faceThreshold": 0.8
+  }
+}
+3. Socket长连接协议
+3.1 基础协议
+3.1.1 登录请求（APP → 后台）
+json
+{
+  "cmd": "login",
+  "deviceId": "DEV001",
+  "registerCode": "ABC123",
+  "version": "1.0.0"
+}
+3.1.2 登录响应（后台 → APP）
+json
+{
+  "cmd": "loginResp",
+  "code": 0,
+  "msg": "success",
+  "token": "session_token"
+}
+3.1.3 心跳（APP → 后台，间隔30s）
+json
+{
+  "cmd": "heartbeat",
+  "deviceId": "DEV001",
+  "timestamp": 1700000000000
+}
+后台响应：
+
+json
+{
+  "cmd": "heartbeatResp",
+  "code": 0,
+  "serverTime": 1700000000000
+}
+3.1.4 登出（APP → 后台）
+json
+{
+  "cmd": "logout",
+  "deviceId": "DEV001"
+}
+3.2 指令下发协议（后台 → APP）
+3.2.1 同步人员与生物特征
+json
+{
+  "cmd": "syncUser",
+  "data": {
+    "userId": "U001",
+    "name": "张三",
+    "faceFeature": "base64_face_data",
+    "fingerFeature": "base64_finger_data",
+    "action": "ADD" | "DELETE" | "UPDATE"
+  }
+}
+APP响应：
+
+json
+{
+  "cmd": "syncUserResp",
+  "code": 0,
+  "msg": "success"
+}
+3.2.2 远程发卡/开门指令
+json
+{
+  "cmd": "remoteOpen",
+  "slotId": 5,
+  "authType": "ADMIN",
+  "operatorId": "admin001"
+}
+APP响应：
+
+json
+{
+  "cmd": "remoteOpenResp",
+  "code": 0,
+  "slotId": 5,
+  "status": "OPENED"
+}
+3.2.3 查询实时状态
+json
+{
+  "cmd": "queryStatus",
+  "slotId": -1
+}
+APP响应：
+
+json
+{
+  "cmd": "statusResp",
+  "data": [
+    {
+      "slotId": 1,
+      "status": "OCCUPIED",
+      "cardNo": "123",
+      "voltage": 5.0,
+      "current": 0.5
+    }
+  ]
+}
+3.2.4 远程一键弹卡
+json
+{
+  "cmd": "remoteEjectAll",
+  "operatorId": "admin001",
+  "confirm": true
+}
+APP响应：
+
+json
+{
+  "cmd": "remoteEjectAllResp",
+  "code": 0,
+  "msg": "success",
+  "ejectedCount": 10
+}
+3.2.5 重启APP
+json
+{
+  "cmd": "restartApp",
+  "delayMs": 3000
+}
+APP响应：
+
+json
+{
+  "cmd": "restartAppResp",
+  "code": 0,
+  "msg": "restarting"
+}
+3.3 上报协议（APP → 后台）
+3.3.1 实时状态上报（事件触发或定时）
+json
+{
+  "cmd": "statusReport",
+  "deviceId": "DEV001",
+  "timestamp": 1700000000000,
+  "slots": [
+    {
+      "slotId": 1,
+      "status": "EMPTY" | "OCCUPIED" | "CHARGING" | "FULL" | "FAULT",
+      "cardNo": "123",
+      "voltage": 5.0,
+      "current": 0.5,
+      "faultCode": 0
+    }
+  ]
+}
+后台响应：
+
+json
+{
+  "cmd": "statusReportResp",
+  "code": 0
+}
+3.3.2 取还卡上报（Socket冗余，与HTTP二选一或双发）
+json
+{
+  "cmd": "cardEvent",
+  "deviceId": "DEV001",
+  "cardNo": "123456",
+  "eventType": "TAKE" | "RETURN",
+  "slotId": 1,
+  "timestamp": 1700000000000,
+  "authType": "FACE" | "FINGER" | "ADMIN"
+}
+后台响应：
+
+json
+{
+  "cmd": "cardEventResp",
+  "code": 0
+}
+3.3.3 终端日志上报
+json
+{
+  "cmd": "logReport",
+  "deviceId": "DEV001",
+  "level": "ERROR" | "WARN" | "INFO" | "DEBUG",
+  "tag": "FaceRecognition",
+  "content": "人脸识别失败，相似度0.65低于阈值0.8",
+  "timestamp": 1700000000000
+}
+后台响应：
+
+json
+{
+  "cmd": "logReportResp",
+  "code": 0
+}
+3.3.4 设备激活状态变更上报
+当设备授权状态发生变化时（如授权过期、被后台禁用等），APP主动上报。
+
+json
+{
+  "cmd": "authStatusChange",
+  "deviceId": "DEV001",
+  "oldStatus": "ACTIVATED",
+  "newStatus": "EXPIRED",
+  "reason": "授权已过期",
+  "timestamp": 1700000000000
+}
+后台响应：
+
+json
+{
+  "cmd": "authStatusChangeResp",
+  "code": 0
+}
+3.3.5 硬件故障上报
+json
+{
+  "cmd": "hardwareFault",
+  "deviceId": "DEV001",
+  "slotId": 3,
+  "faultCode": 0x01,
+  "faultMsg": "卡位电机卡死",
+  "timestamp": 1700000000000
+}
+后台响应：
+
+json
+{
+  "cmd": "hardwareFaultResp",
+  "code": 0
+}
+4. 错误码定义
+错误码	说明
+0	成功
+1001	注册码无效或已过期
+1002	Token过期或无效
+1003	设备未授权
+1004	设备已被禁用
+1005	设备不存在
+1006	激活码已被其他设备使用
+2001	人员已存在
+2002	特征数据错误或为空
+2003	人员不存在
+3001	卡位不存在
+3002	卡位被占用
+3003	卡位已空闲
+4001	硬件操作超时
+4002	硬件未响应
+4003	串口通信失败
+5001	人脸引擎未激活
+5002	指纹引擎未初始化
+6001	数据库操作失败
+9000	系统内部错误
+5. 设备激活流程时序图
+text
+┌────────┐                    ┌────────┐                    ┌────────┐
+│  APP   │                    │  后台  │                    │ 管理员 │
+└───┬────┘                    └───┬────┘                    └───┬────┘
+    │                             │                             │
+    │ 1. 设备启动，检测未激活      │                             │
+    │─────────────────────────────│                             │
+    │                             │                             │
+    │ 2. POST /device/activate    │                             │
+    │    (deviceId, mac, model)   │                             │
+    │────────────────────────────>│                             │
+    │                             │ 3. 生成注册码，状态PENDING  │
+    │<────────────────────────────│                             │
+    │   返回registerCode          │                             │
+    │                             │                             │
+    │ 4. 界面显示注册码，提示激活  │                             │
+    │                             │                             │
+    │                             │ 5. 管理员在后台录入注册码   │
+    │                             │<────────────────────────────│
+    │                             │    绑定设备与注册码         │
+    │                             │                             │
+    │ 6. 用户输入注册码           │                             │
+    │────────────────────────────>│                             │
+    │ POST /device/verify         │                             │
+    │                             │ 7. 验证注册码有效性         │
+    │<────────────────────────────│                             │
+    │   返回valid=true + token    │                             │
+    │                             │                             │
+    │ 8. 保存token，状态变为已激活│                             │
+    │                             │                             │
+    │ 9. Socket登录               │                             │
+    │────────────────────────────>│                             │
+    │                             │                             │
+    │10. 正常业务流程             │                             │
+    │────────────────────────────>│                             │
+    │                             │                             │
+6. 通用数据格式说明
+6.1 卡位状态枚举
+状态值	说明
+EMPTY	空位
+OCCUPIED	有卡（未充电）
+CHARGING	充电中
+FULL	已充满
+FAULT	故障
+6.2 认证类型枚举
+类型值	说明
+FACE	人脸识别
+FINGER	指纹识别
+ADMIN	管理员操作
+REMOTE	远程指令
+6.3 时间格式
+所有时间戳统一使用 毫秒级Unix时间戳（13位数字）。
+
+示例：1700000000000 表示 2023-11-14 22:13:20 UTC。
+
+文档版本：V1.0
+更新日期：2026-07-02
