@@ -49,6 +49,8 @@ jobs:
               Path('AGENTS.md'),
               Path('docs/CODEX_PROJECT_GUIDE.md'),
               Path('docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md'),
+              Path('docs/CONTRACT_EVIDENCE_REGISTER.md'),
+              Path('docs/DEVICE_CONFIGURATION_AND_INTERFACE_AUDIT.md'),
           ]
           for path in required:
               assert path.is_file() and path.stat().st_size > 0, f'missing required guidance: {path}'
@@ -87,10 +89,10 @@ jobs:
               'device-release-gate',
           }
           assert expected.issubset(names), f'missing expected skills: {sorted(expected - names)}'
-          print(f'validated {len(skill_files)} repository skills')
+          print(f'validated {len(skill_files)} repository skills and contract evidence files')
           PY
 
-      - name: Validate complete three-layer architecture
+      - name: Validate complete three-layer architecture and contract evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -170,6 +172,7 @@ jobs:
           assert 'LinkedHashMap<String, JSONObject> operations' in store
           assert 'slotRepository.updateSlot' in store
           assert 'emit("cabinet.slotStatus"' in store
+          assert 'state("PENDING", "等待后端授权状态")' in store
 
           repository = read('data_repository')
           for token in ['LinkedHashMap<String, JSONObject> employees',
@@ -179,7 +182,8 @@ jobs:
 
           coordinator = read('command_coordinator')
           for token in ['InboundCommandRepository', 'DeviceOperationEngine',
-                        'BackendHttpGateway', 'handleRemoteOpen', 'handleQueryStatus']:
+                        'BackendHttpGateway', 'handleRemoteOpen', 'handleRemoteEjectAll',
+                        'handleSyncConfig']:
               assert token in coordinator, f'command coordinator missing {token}'
 
           for communication_name in ['serial', 'mqtt']:
@@ -230,12 +234,59 @@ jobs:
           assert privileged == ['uniapp/src/services/nativeBridge.js'], \
               f'direct native bridge access outside adapter: {privileged}'
 
-          temp_paths = [Path('.refactor'), Path('.batch1'),
-                        Path('.github/workflows/apply-complete-three-layer.yml')]
+          temp_paths = [
+              Path('.refactor'), Path('.batch1'), Path('.contract-rollback'), Path('.diagnostic'),
+              Path('.github/workflows/apply-complete-three-layer.yml'),
+              Path('.github/workflows/apply-contract-evidence-rollback.yml'),
+          ]
           for path in temp_paths:
               assert not path.exists(), f'temporary migration artifact remains: {path}'
 
-          print('validated strict UI -> Android data layer -> communication dependency direction')
+          mapper = (root / 'core/DeviceConfigMapper.java').read_text(encoding='utf-8')
+          for forbidden in ['httpHost', 'mqttHost', 'mqttBrokerUrl',
+                            'config.has("mqttPort")', 'MODE_TCP.equals(mode)']:
+              assert forbidden not in mapper, f'undocumented remote config mapping returned: {forbidden}'
+
+          gateway = read('http_gateway')
+          assert 'String token = settings.optString("runtimeToken"' not in gateway, \
+              'runtimeToken used as HTTP Bearer without a documented contract'
+
+          serial_text = read('serial')
+          assert 'addressMode", "UNCONFIRMED' in serial_text
+          assert 'return ((slotNumber - 1) %' not in serial_text
+          assert 'return slotNumber;' not in serial_text
+          assert '"PHYSICAL".equals(cardNumberMode)' not in serial_text
+          assert 'SERIAL_TOPOLOGY_UNCONFIRMED' in serial_text
+
+          coordinator_text = read('command_coordinator')
+          documented_downlink = {
+              'remoteOpen', 'remoteEjectAll', 'restartApp', 'syncUser', 'syncConfig',
+              'firmwareUpgrade', 'cancelUpgrade', 'deviceSelfCheck',
+              'enableLogUpload', 'disableLogUpload',
+          }
+          actual_cases = set(re.findall(r'case "([^"]+)"', coordinator_text))
+          assert actual_cases == documented_downlink, \
+              f'downlink handlers differ from V4.1: {sorted(actual_cases)}'
+          for forbidden in ['physicalConfirmed', '.put("recovered"',
+                            'case "queryStatus"', 'case "syncEmployeeData"',
+                            'case "syncFaceData"', 'case "syncFingerData"']:
+              assert forbidden not in coordinator_text, f'undocumented wire behavior returned: {forbidden}'
+
+          settings_text = (root / 'core/NativeSettingsRepository.java').read_text(encoding='utf-8')
+          for forbidden in ['card-test.quyohui.com', '119.146.88.108',
+                            '.put("mqttPort", 48419)', '.put("mqttScheme", "tcp")']:
+              assert forbidden not in settings_text, f'undocumented default returned: {forbidden}'
+
+          mqtt_text = read('mqtt')
+          assert 'addUnique(candidates, deviceCode)' not in mqtt_text
+          assert 'addUnique(candidates, clientId)' not in mqtt_text
+          assert '.put("ip", "127.0.0.1")' not in mqtt_text
+
+          inbound = (root / 'core/InboundCommandRepository.java').read_text(encoding='utf-8')
+          assert 'DEFAULT_REPLAY_WINDOW_MS' not in inbound
+          assert 'STALE_PROCESSING_MS' not in inbound
+
+          print('validated strict three-layer architecture and evidence-only external contracts')
           PY
 
       - name: Validate frontend syntax
@@ -249,6 +300,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           for name in [
+              'uniapp/src/pages/config/config.vue',
               'uniapp/src/pages/serial-demo/serial-demo.vue',
               'uniapp/src/pages/splash/splash.vue',
           ]:
