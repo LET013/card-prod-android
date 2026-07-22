@@ -5,11 +5,10 @@ const clone = (value) => JSON.parse(JSON.stringify(value))
 const MOCK_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === 'true'
 
 /**
- * Vue owns only the current in-memory UI projection.
+ * UI-layer memory projection only.
  *
- * Device/runtime/slot/employee truth is owned by Android repositories. Do not restore
- * these values from H5 storage and do not persist them from UI events. After WebView
- * recreation the projection must be repopulated through the native facade.
+ * Android DeviceStateStore/Repositories own settings after commit, runtime, slot, employee and
+ * operation truth. Nothing in this module is restored from or persisted to H5 storage.
  */
 export const appState = reactive({
   settings: { ...defaultSettings },
@@ -62,13 +61,3 @@ export const applySlotStatus = (data) => {
   Object.assign(slot, clone(data))
   return slot
 }
-
-// Compatibility exports for pages not yet migrated. They intentionally do not persist
-// Android-owned business state. Remove callers gradually instead of reintroducing storage.
-export const persistSettings = () => {}
-export const persistSlots = () => {}
-export const persistEmployees = () => {}
-export const persistHistory = () => {}
-export const persistRuntime = () => {}
-export const persistSession = () => {}
-export const rebuildSlots = () => appState.slots
