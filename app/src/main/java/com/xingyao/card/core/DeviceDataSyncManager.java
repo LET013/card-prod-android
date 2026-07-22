@@ -1,6 +1,5 @@
 package com.xingyao.card.core;
 
-import android.content.Context;
 import android.util.Base64;
 
 import org.json.JSONArray;
@@ -13,38 +12,38 @@ public final class DeviceDataSyncManager {
     private static final int FACE_PAGE_SIZE = 10;
     private static final int FINGER_PAGE_SIZE = 20;
 
-    private final Context context;
     private final NativeSettingsRepository settingsRepository;
     private final DeviceDataRepository dataRepository;
     private final ArcFaceManager arcFaceManager;
+    private final BackendHttpGateway httpGateway;
 
-    public DeviceDataSyncManager(Context context, NativeSettingsRepository settingsRepository, DeviceDataRepository dataRepository) {
-        this(context, settingsRepository, dataRepository, null);
-    }
-
-    public DeviceDataSyncManager(Context context, NativeSettingsRepository settingsRepository,
-                                 DeviceDataRepository dataRepository, ArcFaceManager arcFaceManager) {
-        this.context = context.getApplicationContext();
+    public DeviceDataSyncManager(NativeSettingsRepository settingsRepository,
+                                 DeviceDataRepository dataRepository,
+                                 ArcFaceManager arcFaceManager,
+                                 BackendHttpGateway httpGateway) {
+        if (settingsRepository == null) throw new IllegalArgumentException("settingsRepository is required");
+        if (dataRepository == null) throw new IllegalArgumentException("dataRepository is required");
+        if (httpGateway == null) throw new IllegalArgumentException("httpGateway is required");
         this.settingsRepository = settingsRepository;
         this.dataRepository = dataRepository;
         this.arcFaceManager = arcFaceManager;
+        this.httpGateway = httpGateway;
     }
 
     public JSONObject syncAll(JSONObject command) throws Exception {
         JSONObject settings = settingsRepository.load();
         String apiBaseUrl = httpBaseUrl(settings);
         String token = settings.optString("deviceToken", "");
-        BackendHttpClient client = new BackendHttpClient(apiBaseUrl, token);
         boolean full = command != null && (command.optBoolean("full", false) || command.optBoolean("fullSync", false));
         long employeeSince = full ? 0L : dataRepository.employeeSyncVersion();
         long faceSince = full ? 0L : dataRepository.faceSyncVersion();
         long fingerSince = full ? 0L : dataRepository.fingerSyncVersion();
         JSONObject deviceScope = new JSONObject().put("deviceCode", settings.optString("deviceCode", settings.optString("deviceId", "")));
 
-        PageResult employees = pullPaged(client, "/api/v1/employee/sync", "employees", employeeSince, EMPLOYEE_PAGE_SIZE, deviceScope);
-        PageResult faces = pullPaged(client, "/api/v1/employee/face/sync", "faceFeatures", faceSince, FACE_PAGE_SIZE,
+        PageResult employees = pullPaged("/api/v1/employee/sync", "employees", employeeSince, EMPLOYEE_PAGE_SIZE, deviceScope);
+        PageResult faces = pullPaged("/api/v1/employee/face/sync", "faceFeatures", faceSince, FACE_PAGE_SIZE,
                 new JSONObject(deviceScope.toString()).put("includeFlags", settings.optInt("faceSyncIncludeFlags", 3)));
-        PageResult fingers = pullPaged(client, "/api/v1/employee/finger/sync", "fingerFeatures", fingerSince, FINGER_PAGE_SIZE, deviceScope);
+        PageResult fingers = pullPaged("/api/v1/employee/finger/sync", "fingerFeatures", fingerSince, FINGER_PAGE_SIZE, deviceScope);
 
         JSONArray normalizedEmployees = normalizeEmployees(employees.items, faces.items, fingers.items, apiBaseUrl);
         JSONArray normalizedFaces = normalizeFaceFeatures(faces.items, apiBaseUrl);
@@ -69,11 +68,10 @@ public final class DeviceDataSyncManager {
     public JSONObject syncEmployees(JSONObject command) throws Exception {
         JSONObject settings = settingsRepository.load();
         String apiBaseUrl = httpBaseUrl(settings);
-        BackendHttpClient client = new BackendHttpClient(apiBaseUrl, settings.optString("deviceToken", ""));
         boolean full = command != null && (command.optBoolean("full", false) || command.optBoolean("fullSync", false));
         long employeeSince = full ? 0L : dataRepository.employeeSyncVersion();
         JSONObject deviceScope = new JSONObject().put("deviceCode", settings.optString("deviceCode", settings.optString("deviceId", "")));
-        PageResult employees = pullPaged(client, "/api/v1/employee/sync", "employees", employeeSince, EMPLOYEE_PAGE_SIZE, deviceScope);
+        PageResult employees = pullPaged("/api/v1/employee/sync", "employees", employeeSince, EMPLOYEE_PAGE_SIZE, deviceScope);
         JSONObject current = dataRepository.snapshot();
         JSONArray faces = current.optJSONArray("faceFeatures");
         JSONArray fingers = current.optJSONArray("fingerFeatures");
@@ -93,13 +91,12 @@ public final class DeviceDataSyncManager {
     public JSONObject syncFaces(JSONObject command) throws Exception {
         JSONObject settings = settingsRepository.load();
         String apiBaseUrl = httpBaseUrl(settings);
-        BackendHttpClient client = new BackendHttpClient(apiBaseUrl, settings.optString("deviceToken", ""));
         boolean full = command != null && (command.optBoolean("full", false) || command.optBoolean("fullSync", false));
         long faceSince = full ? 0L : dataRepository.faceSyncVersion();
         JSONObject deviceScope = new JSONObject().put("deviceCode", settings.optString("deviceCode", settings.optString("deviceId", "")))
                 .put("includeFlags", command == null ? settings.optInt("faceSyncIncludeFlags", 3)
                         : command.optInt("includeFlags", settings.optInt("faceSyncIncludeFlags", 3)));
-        PageResult faces = pullPaged(client, "/api/v1/employee/face/sync", "faceFeatures", faceSince, FACE_PAGE_SIZE, deviceScope);
+        PageResult faces = pullPaged("/api/v1/employee/face/sync", "faceFeatures", faceSince, FACE_PAGE_SIZE, deviceScope);
         JSONArray normalizedFaces = normalizeFaceFeatures(faces.items, apiBaseUrl);
         JSONObject current = dataRepository.snapshot();
         JSONArray employees = current.optJSONArray("employees");
@@ -117,11 +114,10 @@ public final class DeviceDataSyncManager {
 
     public JSONObject syncFingers(JSONObject command) throws Exception {
         JSONObject settings = settingsRepository.load();
-        BackendHttpClient client = new BackendHttpClient(httpBaseUrl(settings), settings.optString("deviceToken", ""));
         boolean full = command != null && (command.optBoolean("full", false) || command.optBoolean("fullSync", false));
         long fingerSince = full ? 0L : dataRepository.fingerSyncVersion();
         JSONObject deviceScope = new JSONObject().put("deviceCode", settings.optString("deviceCode", settings.optString("deviceId", "")));
-        PageResult fingers = pullPaged(client, "/api/v1/employee/finger/sync", "fingerFeatures", fingerSince, FINGER_PAGE_SIZE, deviceScope);
+        PageResult fingers = pullPaged("/api/v1/employee/finger/sync", "fingerFeatures", fingerSince, FINGER_PAGE_SIZE, deviceScope);
         JSONObject snapshot = dataRepository.saveSyncResult(null, 0L, null, 0L, fingers.items, fingers.syncVersion);
         return new JSONObject()
                 .put("code", 0)
@@ -131,7 +127,7 @@ public final class DeviceDataSyncManager {
                 .put("snapshot", snapshot);
     }
 
-    private PageResult pullPaged(BackendHttpClient client, String path, String arrayKey, long lastSyncTime,
+    private PageResult pullPaged(String path, String arrayKey, long lastSyncTime,
                                  int pageSize, JSONObject extra) throws Exception {
         JSONArray all = new JSONArray();
         long syncVersion = lastSyncTime;
@@ -149,7 +145,7 @@ public final class DeviceDataSyncManager {
                     body.put(key, extra.opt(key));
                 }
             }
-            JSONObject data = BackendHttpClient.dataObject(client.post(path, body));
+            JSONObject data = httpGateway.postData(path, body);
             JSONArray pageItems = data.optJSONArray(arrayKey);
             if (pageItems != null) {
                 for (int index = 0; index < pageItems.length(); index++) all.put(pageItems.getJSONObject(index));
@@ -256,19 +252,19 @@ public final class DeviceDataSyncManager {
                     byte[] image = decodeBase64(imageBase64);
                     arcFaceManager.enrollImage(employeeId, employeeName, image, imageUrl);
                 } else {
-                    byte[] image = BackendHttpClient.downloadBytes(imageUrl, token);
+                    byte[] image = httpGateway.downloadBytes(imageUrl, true);
                     arcFaceManager.enrollImage(employeeId, employeeName, image, imageUrl);
                 }
                 successCount++;
             } catch (Exception error) {
                 if (faceFeature.isEmpty() && imageBase64.isEmpty() && !imageUrl.isEmpty()) {
                     try {
-                        byte[] image = BackendHttpClient.downloadBytes(imageUrl, "");
+                        byte[] image = httpGateway.downloadBytes(imageUrl, false);
                         arcFaceManager.enrollImage(employeeId, employeeName, image, imageUrl);
                         successCount++;
                         continue;
                     } catch (Exception ignored) {
-                        // retry without auth token
+                        // Retry without bearer token for public image endpoints.
                     }
                 }
                 failures.put(new JSONObject().put("employeeId", employeeId)
@@ -279,113 +275,90 @@ public final class DeviceDataSyncManager {
         }
         return result.put("successCount", successCount)
                 .put("failedCount", failures.length())
-                .put("failures", failures);
+                .put("failures", failures)
+                .put("message", failures.length() == 0 ? "人脸模板已导入" : "部分人脸模板导入失败，将在后续同步重试");
     }
 
     private static String employeeName(JSONArray employees, String employeeId) {
-        for (int index = 0; employees != null && index < employees.length(); index++) {
+        if (employees == null || employeeId == null) return employeeId == null ? "" : employeeId;
+        for (int index = 0; index < employees.length(); index++) {
             JSONObject employee = employees.optJSONObject(index);
-            if (employee == null) continue;
-            String matchId = employee.optString("employeeId");
-            if (matchId.isEmpty()) matchId = employee.optString("id", employee.optString("employeeCode", ""));
-            if (!employeeId.equals(matchId)) continue;
-            String name = employee.optString("employeeName", employee.optString("name", ""));
-            if (!name.isEmpty()) return name;
+            if (employee == null || !employeeId.equals(employee.optString("employeeId", employee.optString("id", "")))) continue;
+            return employee.optString("employeeName", employee.optString("name", employeeId));
         }
         return employeeId;
     }
 
-    private static String absoluteUrl(String baseUrl, String path) {
-        String value = path == null ? "" : path.trim();
-        if (value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")) return value;
-        String base = BackendHttpClient.normalizeBaseUrl(baseUrl);
-        return base + (value.startsWith("/") ? value : "/" + value);
-    }
-
-    private static String normalizeFaceFeatureValue(JSONObject face) throws JSONException {
-        if (face == null) return "";
-        Object raw = face.opt("faceFeature");
-        if (raw instanceof String) return ((String) raw).trim();
-        if (raw instanceof JSONObject) {
-            JSONObject object = (JSONObject) raw;
-            String value = object.optString("feature", "").trim();
-            if (value.isEmpty()) value = object.optString("value", "").trim();
-            if (value.isEmpty()) value = object.optString("data", "").trim();
-            return value;
+    private static String normalizeFaceFeatureValue(JSONObject face) {
+        String value = firstString(face, "faceFeature", "feature", "featureData", "template", "faceTemplate");
+        if (value.startsWith("data:")) {
+            int comma = value.indexOf(',');
+            if (comma >= 0) value = value.substring(comma + 1);
         }
-        if (raw != null) return String.valueOf(raw).trim();
-        String value = face.optString("faceFeatureData", "").trim();
-        if (!value.isEmpty()) return value;
-        value = face.optString("faceFeatureBase64", "").trim();
-        return value;
+        return value.replaceAll("\\s+", "");
     }
 
     private static String normalizeFaceImageBase64(JSONObject face) {
-        if (face == null) return "";
-        String imageBase64 = face.optString("faceImageBase64", "").trim();
-        if (!imageBase64.isEmpty()) return imageBase64;
-        imageBase64 = face.optString("faceImageData", "").trim();
-        if (!imageBase64.isEmpty()) return imageBase64;
-        String dataUrl = face.optString("faceImageBase64Data", "").trim();
-        if (dataUrl.isEmpty()) return "";
-        int comma = dataUrl.indexOf(',');
-        return comma < 0 ? dataUrl : dataUrl.substring(comma + 1);
+        String value = firstString(face, "faceImageBase64", "imageBase64", "photoBase64");
+        if (value.startsWith("data:")) {
+            int comma = value.indexOf(',');
+            if (comma >= 0) value = value.substring(comma + 1);
+        }
+        return value.replaceAll("\\s+", "");
     }
 
-    private static byte[] decodeBase64(String value) throws IllegalArgumentException {
-        if (value == null) return new byte[0];
-        String normalized = value.trim();
-        if (normalized.isEmpty()) return new byte[0];
-        if (normalized.contains(",")) {
-            int comma = normalized.indexOf(',');
-            normalized = normalized.substring(comma + 1);
+    private static String firstString(JSONObject source, String... keys) {
+        if (source == null || keys == null) return "";
+        for (String key : keys) {
+            String value = source.optString(key, "").trim();
+            if (!value.isEmpty()) return value;
         }
-        normalized = normalized.replace("\r", "").replace("\n", "").replace(" ", "");
-        try {
-            return Base64.decode(normalized, Base64.NO_WRAP | Base64.NO_PADDING);
-        } catch (IllegalArgumentException firstError) {
-            try {
-                return Base64.decode(normalized, Base64.URL_SAFE | Base64.NO_WRAP);
-            } catch (IllegalArgumentException secondError) {
-                throw new IllegalArgumentException("人脸图片Base64解码失败: " + firstError.getMessage());
-            }
-        }
+        return "";
     }
 
     private static boolean isLikelyBase64(String value) {
         if (value == null) return false;
-        String normalized = value.trim();
-        if (normalized.isEmpty()) return false;
-        if (normalized.startsWith("http://") || normalized.startsWith("https://") || normalized.startsWith("/")) return false;
-        normalized = normalized.replace("\r", "").replace("\n", "").replace(" ", "");
-        return normalized.matches("^[A-Za-z0-9+/=]+$") && normalized.length() >= 64;
+        String normalized = value.replaceAll("\\s+", "");
+        if (normalized.length() < 128 || normalized.length() % 4 != 0) return false;
+        return normalized.matches("[A-Za-z0-9+/=]+") || normalized.startsWith("data:");
+    }
+
+    private static byte[] decodeBase64(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.startsWith("data:")) {
+            int comma = normalized.indexOf(',');
+            if (comma >= 0) normalized = normalized.substring(comma + 1);
+        }
+        return Base64.decode(normalized.replaceAll("\\s+", ""), Base64.DEFAULT);
+    }
+
+    private static String httpBaseUrl(JSONObject settings) {
+        String value = settings.optString("apiBaseUrl", settings.optString("serverAddress", ""));
+        return BackendHttpClient.normalizeBaseUrl(value);
+    }
+
+    private static String absoluteUrl(String baseUrl, String value) {
+        String raw = value == null ? "" : value.trim();
+        if (raw.isEmpty() || raw.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")) return raw;
+        return baseUrl + (raw.startsWith("/") ? raw : "/" + raw);
     }
 
     private static long parseLong(Object value, long fallback) {
-        if (value instanceof Number) return ((Number) value).longValue();
-        if (value == null) return fallback;
         try { return Long.parseLong(String.valueOf(value)); }
         catch (Exception ignored) { return fallback; }
     }
 
-    private static String safeMessage(Exception error) {
+    private static String safeMessage(Throwable error) {
+        if (error == null) return "unknown";
         String value = error.getMessage();
         return value == null || value.trim().isEmpty() ? error.getClass().getSimpleName() : value;
-    }
-
-    private static String httpBaseUrl(JSONObject settings) {
-        String explicit = settings.optString("apiBaseUrl", "").trim();
-        if (!explicit.isEmpty()) return explicit;
-        String server = settings.optString("serverAddress", "").trim();
-        return server.isEmpty() ? "http://card-test.quyohui.com" : server;
     }
 
     private static final class PageResult {
         final JSONArray items;
         final long syncVersion;
-
         PageResult(JSONArray items, long syncVersion) {
-            this.items = items;
+            this.items = items == null ? new JSONArray() : items;
             this.syncVersion = syncVersion;
         }
     }
