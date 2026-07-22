@@ -1,76 +1,74 @@
 import { reactive } from 'vue'
-import { defaultSettings, defaultRuntime, createSlots, defaultEmployees, defaultHistory } from '@/mock/data.js'
+import { defaultSettings, defaultRuntime, defaultHistory } from '@/mock/data.js'
 
-const STORAGE_KEYS = {
-  settings: 'card.settings.v2',
-  runtime: 'card.runtime.v2',
-  slots: 'card.slots.v2',
-  employees: 'card.employees.v2',
-  history: 'card.history.v2',
-  session: 'card.session.v2'
-}
+const clone = (value) => JSON.parse(JSON.stringify(value))
+const MOCK_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === 'true'
 
-const safeRead = (key, fallback) => {
-  try {
-    return uni.getStorageSync(key) || fallback
-  } catch (error) {
-    return fallback
-  }
-}
-
-const initialSettings = { ...defaultSettings, ...safeRead(STORAGE_KEYS.settings, {}) }
-
-const buildSlots = (settings, previousSlots = []) => {
-  const baseSlots = createSlots(Number(settings.totalCount) || 100, Number(settings.singleGroupCount) || 10)
-  if (!Array.isArray(previousSlots) || previousSlots.length === 0) return baseSlots
-  const previousByNumber = new Map(previousSlots.map((slot) => [Number(slot.slotNumber), slot]))
-  return baseSlots.map((base) => {
-    const previous = previousByNumber.get(Number(base.slotNumber))
-    if (!previous) return base
-    return {
-      ...base,
-      ...previous,
-      id: base.id,
-      deviceId: base.deviceId,
-      slotNumber: base.slotNumber,
-      displayNumber: base.displayNumber,
-      groupNumber: base.groupNumber,
-      boardAddress: base.boardAddress
-    }
-  })
-}
-
+/**
+ * Vue owns only the current in-memory UI projection.
+ *
+ * Device/runtime/slot/employee truth is owned by Android repositories. Do not restore
+ * these values from H5 storage and do not persist them from UI events. After WebView
+ * recreation the projection must be repopulated through the native facade.
+ */
 export const appState = reactive({
-  settings: initialSettings,
-  runtime: { ...defaultRuntime, ...safeRead(STORAGE_KEYS.runtime, {}) },
-  slots: buildSlots(initialSettings, safeRead(STORAGE_KEYS.slots, [])),
-  employees: safeRead(STORAGE_KEYS.employees, defaultEmployees),
-  history: safeRead(STORAGE_KEYS.history, defaultHistory),
+  settings: { ...defaultSettings },
+  runtime: clone(defaultRuntime),
+  slots: [],
+  employees: [],
+  history: MOCK_ENABLED ? clone(defaultHistory) : [],
   session: null,
   bridgeReady: false,
   lastError: ''
 })
 
-export const persistSettings = () => uni.setStorageSync(STORAGE_KEYS.settings, { ...appState.settings })
-export const persistSlots = () => uni.setStorageSync(STORAGE_KEYS.slots, JSON.parse(JSON.stringify(appState.slots)))
-export const persistEmployees = () => uni.setStorageSync(STORAGE_KEYS.employees, JSON.parse(JSON.stringify(appState.employees)))
-export const persistHistory = () => uni.setStorageSync(STORAGE_KEYS.history, JSON.parse(JSON.stringify(appState.history)))
-export const persistRuntime = () => uni.setStorageSync(STORAGE_KEYS.runtime, JSON.parse(JSON.stringify(appState.runtime)))
-export const persistSession = () => {
-  // 管理会话只保存在当前 WebView 内存中，应用重启后必须重新验证密码。
-  uni.removeStorageSync(STORAGE_KEYS.session)
+export const replaceSettingsProjection = (settings = {}) => {
+  Object.assign(appState.settings, settings || {})
+  return appState.settings
 }
 
-export const rebuildSlots = () => {
-  appState.slots = buildSlots(appState.settings, appState.slots)
-  persistSlots()
+export const replaceRuntimeProjection = (runtime = {}) => {
+  appState.runtime = clone(runtime || {})
+  return appState.runtime
+}
+
+export const replaceSlotsProjection = (items = []) => {
+  const slots = Array.isArray(items) ? clone(items) : []
+  appState.slots.splice(0, appState.slots.length, ...slots)
+  return appState.slots
+}
+
+export const replaceEmployeesProjection = (items = []) => {
+  appState.employees = Array.isArray(items) ? clone(items) : []
+  return appState.employees
+}
+
+export const replaceHistoryProjection = (items = []) => {
+  appState.history = Array.isArray(items) ? clone(items) : []
+  return appState.history
+}
+
+export const clearNativeProjection = () => {
+  appState.runtime = clone(defaultRuntime)
+  appState.slots.splice(0, appState.slots.length)
+  appState.employees = []
+  appState.bridgeReady = false
 }
 
 export const applySlotStatus = (data) => {
   if (!data) return null
   const slot = appState.slots.find((item) => Number(item.slotNumber) === Number(data.slotNumber))
   if (!slot) return null
-  Object.assign(slot, data)
-  persistSlots()
+  Object.assign(slot, clone(data))
   return slot
 }
+
+// Compatibility exports for pages not yet migrated. They intentionally do not persist
+// Android-owned business state. Remove callers gradually instead of reintroducing storage.
+export const persistSettings = () => {}
+export const persistSlots = () => {}
+export const persistEmployees = () => {}
+export const persistHistory = () => {}
+export const persistRuntime = () => {}
+export const persistSession = () => {}
+export const rebuildSlots = () => appState.slots
