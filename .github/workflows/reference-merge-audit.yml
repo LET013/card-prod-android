@@ -1,4 +1,4 @@
-name: Reference merge audit
+name: Apply Motone three-layer integration
 
 on:
   pull_request:
@@ -6,16 +6,17 @@ on:
       - reference/motone-current
     paths:
       - '.github/workflows/reference-merge-audit.yml'
+      - '.integration/**'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  audit:
+  integrate-and-verify:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 75
     steps:
       - name: Check out integration branch
         uses: actions/checkout@v4
@@ -23,94 +24,107 @@ jobs:
           ref: fix/motone-three-layer-integration
           fetch-depth: 0
 
-      - name: Fetch both source branches
-        run: |
-          git fetch origin reference/motone-current:refs/remotes/origin/reference/motone-current
-          git fetch origin fix/device-integration-architecture:refs/remotes/origin/fix/device-integration-architecture
+      - name: Fetch selective migration source
+        run: git fetch origin fix/device-integration-architecture:refs/remotes/origin/fix/device-integration-architecture
 
-      - name: Generate tree and diff audit
+      - name: Apply selected files
+        run: python3 .integration/apply.py
+
+      - name: Static scope and pollution checks
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import subprocess
+          set -euo pipefail
+          test -f app/src/main/java/com/xingyao/card/core/BackendTransportManager.java
+          test -f app/src/main/java/com/xingyao/card/core/DocumentedBackendService.java
+          test -f app/src/main/java/com/xingyao/card/core/FaceAiManager.java
+          test -f app/src/main/java/com/xingyao/card/FaceEnrollmentController.java
+          test -f app/src/main/cpp/SerialPort.c
+          test -f docs/REFERENCE_UNUSED_AND_MISSING.md
+          ! git ls-files | grep -E '(^|/)\.cxx/|(^|/)build/|app/src/main/assets/'
+          ! grep -R 'com\.arcsoft\|arcsoft_face\.jar\|ARCSOFT_' app/build.gradle app/src/main/java app/src/main/AndroidManifest.xml
+          ! grep -R 'card-test\.quyohui\.com\|119\.146\.88\.108' app/src/main/java uniapp/src
+          ! grep -R 'DeviceCoreService\.' app/src/main/java/com/xingyao/card/MainActivity.java app/src/main/java/com/xingyao/card/JsBridge.java app/src/main/java/com/xingyao/card/FaceEnrollmentController.java
+          ! grep -R 'boardAddressLabel\|\.put("boardAddress"' app/src/main/java/com/xingyao/card/core/SlotStateRepository.java
+          grep -q 'DeviceApplicationFacade' app/src/main/java/com/xingyao/card/JsBridge.java
+          grep -q 'DeviceRuntimeRegistry.setUiListener' app/src/main/java/com/xingyao/card/MainActivity.java
+          grep -q 'FaceSearchEngine' app/src/main/java/com/xingyao/card/FaceEnrollmentController.java
+          grep -q 'BackendTransportManager' app/src/main/java/com/xingyao/card/service/DeviceCoreService.java
+          grep -q 'DocumentedBackendService' app/src/main/java/com/xingyao/card/core/DeviceDataLayer.java
 
-          def run(*args):
-              return subprocess.check_output(args, text=True, errors='replace')
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-          reference = 'origin/reference/motone-current'
-          repaired = 'origin/fix/device-integration-architecture'
-          ref_files = set(run('git','ls-tree','-r','--name-only',reference).splitlines())
-          fix_files = set(run('git','ls-tree','-r','--name-only',repaired).splitlines())
-          only_ref = sorted(ref_files - fix_files)
-          only_fix = sorted(fix_files - ref_files)
-          name_status = run('git','diff','--name-status','--find-renames',reference,repaired)
-          changed = []
-          for line in name_status.splitlines():
-              parts = line.split('\t')
-              if not parts:
-                  continue
-              status = parts[0]
-              if status.startswith('M') and len(parts) >= 2:
-                  changed.append(parts[-1])
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-          focus_prefixes = (
-              'app/src/main/java/com/xingyao/card/',
-              'app/src/test/', 'uniapp/src/', 'docs/', '.github/', '.agents/',
-              'app/build.gradle', 'app/src/main/AndroidManifest.xml', 'gradle/', 'gradlew'
-          )
-          focus_changed = [p for p in sorted(changed) if p.startswith(focus_prefixes)]
-          focus_only_ref = [p for p in only_ref if p.startswith(focus_prefixes)]
-          focus_only_fix = [p for p in only_fix if p.startswith(focus_prefixes)]
+      - name: Build H5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uniapp
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build:h5
+          test -s dist/build/h5/index.html
 
-          report = []
-          report.append('# Motone 参考分支整合审计')
-          report.append('')
-          report.append('本报告由 Git tree 直接生成；两分支无共同祖先，因此只比较最终文件树，不推断提交关系。')
-          report.append('')
-          report.append('## 统计')
-          report.append('')
-          report.append(f'- reference 文件数：{len(ref_files)}')
-          report.append(f'- 当前修复分支文件数：{len(fix_files)}')
-          report.append(f'- 同路径但内容不同：{len(changed)}')
-          report.append(f'- 仅 reference 存在：{len(only_ref)}')
-          report.append(f'- 仅修复分支存在：{len(only_fix)}')
-          report.append('')
-          report.append('## 合并原则')
-          report.append('')
-          report.append('- `reference/motone-current` 是代码基线。')
-          report.append('- FaceAISDK、CameraX、布局、资源和参考分支特有功能不得被旧实现覆盖。')
-          report.append('- 只迁移三层架构、Markdown 明确接口、必要安全修复、测试和证据门禁。')
-          report.append('- 没有文档证据的字段或行为保持空、禁用或记录。')
-          report.append('')
-          report.append('## 重点同路径差异')
-          report.append('')
-          report.extend(f'- `{p}`' for p in focus_changed)
-          report.append('')
-          report.append('## 仅参考分支存在的重点文件')
-          report.append('')
-          report.extend(f'- `{p}`' for p in focus_only_ref)
-          report.append('')
-          report.append('## 仅当前修复分支存在的重点文件')
-          report.append('')
-          report.extend(f'- `{p}`' for p in focus_only_fix)
-          report.append('')
-          report.append('## 原始 name-status')
-          report.append('')
-          report.append('```text')
-          report.append(name_status)
-          report.append('```')
-          Path('docs/REFERENCE_MERGE_AUDIT.md').write_text('\n'.join(report), encoding='utf-8')
-          PY
+      - name: Install generated H5 into Android assets for verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf app/src/main/assets/*
+          mkdir -p app/src/main/assets
+          cp -R uniapp/dist/build/h5/. app/src/main/assets/
+          test -s app/src/main/assets/index.html
 
-      - name: Commit audit report
+      - name: Run Android unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --console=plain
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Inspect APK contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -l app/build/outputs/apk/debug/app-debug.apk > /tmp/apk-files.txt
+          grep -q 'lib/arm64-v8a/libSerialPort.so' /tmp/apk-files.txt
+          grep -q 'lib/armeabi-v7a/libSerialPort.so' /tmp/apk-files.txt
+          grep -q 'assets/index.html' /tmp/apk-files.txt
+          ! grep -qi 'arcsoft' /tmp/apk-files.txt
+
+      - name: Commit verified integration
         shell: bash
         env:
           HEAD_BRANCH: fix/motone-three-layer-integration
         run: |
+          set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add docs/REFERENCE_MERGE_AUDIT.md
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m '生成Motone参考分支整合审计'
+          git add -A -- \
+            .gitattributes .gitignore AGENTS.md .agents \
+            app/build.gradle app/src/main/AndroidManifest.xml \
+            app/src/main/java/com/xingyao/card app/src/test/java/com/xingyao/card/core \
+            uniapp/src \
+            docs/CODEX_PROJECT_GUIDE.md docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md \
+            docs/CONTRACT_EVIDENCE_REGISTER.md docs/DEVICE_CONFIGURATION_AND_INTERFACE_AUDIT.md \
+            docs/REFERENCE_MERGE_AUDIT.md docs/REFERENCE_UNUSED_AND_MISSING.md \
+            gradle/wrapper gradlew gradlew.bat
+          git add -f gradle/wrapper/gradle-wrapper.jar
+          if git diff --cached --quiet; then
+            echo 'No integration changes to commit'
+            exit 0
+          fi
+          git commit -m '基于Motone源码整合三层架构与V4.1接口'
           git push origin HEAD:"${HEAD_BRANCH}"
