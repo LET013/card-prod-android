@@ -24,7 +24,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply stage 2
-        run: python3 .stage2-migration/apply.py
+        run: |
+          python3 .stage2-migration/apply.py
+          python3 .stage2-migration/post.py
 
       - name: Static architecture and contract checks
         shell: bash
