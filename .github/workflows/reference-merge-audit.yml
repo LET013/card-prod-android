@@ -42,22 +42,24 @@ jobs:
           repaired = 'origin/fix/device-integration-architecture'
           ref_files = set(run('git','ls-tree','-r','--name-only',reference).splitlines())
           fix_files = set(run('git','ls-tree','-r','--name-only',repaired).splitlines())
-          common = sorted(ref_files & fix_files)
           only_ref = sorted(ref_files - fix_files)
           only_fix = sorted(fix_files - ref_files)
+          name_status = run('git','diff','--name-status','--find-renames',reference,repaired)
           changed = []
-          same = []
-          for path in common:
-              ref_sha = run('git','rev-parse',f'{reference}:{path}').strip()
-              fix_sha = run('git','rev-parse',f'{repaired}:{path}').strip()
-              (same if ref_sha == fix_sha else changed).append(path)
+          for line in name_status.splitlines():
+              parts = line.split('\t')
+              if not parts:
+                  continue
+              status = parts[0]
+              if status.startswith('M') and len(parts) >= 2:
+                  changed.append(parts[-1])
 
           focus_prefixes = (
               'app/src/main/java/com/xingyao/card/',
               'app/src/test/', 'uniapp/src/', 'docs/', '.github/', '.agents/',
               'app/build.gradle', 'app/src/main/AndroidManifest.xml', 'gradle/', 'gradlew'
           )
-          focus_changed = [p for p in changed if p.startswith(focus_prefixes)]
+          focus_changed = [p for p in sorted(changed) if p.startswith(focus_prefixes)]
           focus_only_ref = [p for p in only_ref if p.startswith(focus_prefixes)]
           focus_only_fix = [p for p in only_fix if p.startswith(focus_prefixes)]
 
@@ -70,7 +72,6 @@ jobs:
           report.append('')
           report.append(f'- reference 文件数：{len(ref_files)}')
           report.append(f'- 当前修复分支文件数：{len(fix_files)}')
-          report.append(f'- 同路径且内容一致：{len(same)}')
           report.append(f'- 同路径但内容不同：{len(changed)}')
           report.append(f'- 仅 reference 存在：{len(only_ref)}')
           report.append(f'- 仅修复分支存在：{len(only_fix)}')
@@ -97,7 +98,7 @@ jobs:
           report.append('## 原始 name-status')
           report.append('')
           report.append('```text')
-          report.append(run('git','diff','--name-status','--find-renames',reference,repaired))
+          report.append(name_status)
           report.append('```')
           Path('docs/REFERENCE_MERGE_AUDIT.md').write_text('\n'.join(report), encoding='utf-8')
           PY
