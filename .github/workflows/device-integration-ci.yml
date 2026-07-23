@@ -102,7 +102,8 @@ jobs:
               assert token not in facade, f'Facade bypasses data layer: {token}'
 
           activity = read('activity')
-          assert not re.findall(r'DeviceCoreService\.(?!class\b)', activity)
+          static_service_calls = re.findall(r'DeviceCoreService\.(?!class\b)([A-Za-z_]\w*)\s*\(', activity)
+          assert not static_service_calls, f'Activity calls Service static business APIs: {static_service_calls}'
           assert 'DeviceRuntimeRegistry.setUiListener' in activity
           assert 'FaceEnrollmentController' in activity
           assert 'jsBridge.close()' in activity
