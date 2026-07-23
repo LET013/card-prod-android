@@ -157,6 +157,7 @@ public final class BackendTransportManager {
         cancelReconnect();
         stopHeartbeat();
         closeTransports();
+        connecting = false;
         if (!running) return;
         if (BackendEndpointSettings.MODE_HTTP.equals(transportMode)) connectHttp();
         else if (BackendEndpointSettings.MODE_TCP.equals(transportMode)) connectTcp();
@@ -323,6 +324,14 @@ public final class BackendTransportManager {
             String cmd = envelope.optString("cmd", "");
             if ("loginResp".equals(cmd)) {
                 requireLoginSuccess(envelope, "MQTT/TCP");
+                JSONObject loginData = envelope.optJSONObject("data");
+                String runtimeToken = envelope.optString("token", "").trim();
+                if (runtimeToken.isEmpty() && loginData != null) {
+                    runtimeToken = loginData.optString("token", "").trim();
+                }
+                if (!runtimeToken.isEmpty() && listener != null) {
+                    listener.onRuntimeToken(runtimeToken);
+                }
                 authenticatedAt = System.currentTimeMillis();
                 updateState("AUTHENTICATED", "后台业务登录成功", null);
                 startHeartbeat();

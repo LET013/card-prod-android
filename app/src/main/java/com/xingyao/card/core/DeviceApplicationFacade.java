@@ -165,6 +165,12 @@ public final class DeviceApplicationFacade {
                     return deferred(requestId, "FACE_REGISTERED_QUERY_FAILED",
                             () -> new JSONObject().put("employeeIds",
                                     runtime().registeredFaceEmployeeIds()));
+                case "face.uploadImage":
+                    return deferred(requestId, "FACE_IMAGE_UPLOAD_FAILED",
+                            () -> runtime().uploadFaceImage(
+                                    safePayload.optString("userId", ""),
+                                    safePayload.optString("filePath", ""),
+                                    safePayload.optString("faceFeature", "")));
                 case "fingerprint.uploadFeature":
                     return deferred(requestId, "FINGERPRINT_UPLOAD_FAILED",
                             () -> runtime().uploadFingerprintFeature(safePayload));
@@ -205,6 +211,10 @@ public final class DeviceApplicationFacade {
             }
         });
         return ActionResult.deferred();
+    }
+
+    public void close() {
+        ioExecutor.shutdownNow();
     }
 
     private DeviceDataLayer runtime() throws FacadeException {

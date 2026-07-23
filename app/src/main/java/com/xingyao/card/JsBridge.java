@@ -75,6 +75,10 @@ public class JsBridge {
         }
     }
 
+    public void close() {
+        facade.close();
+    }
+
     private static String safeMessage(Throwable error) {
         if (error == null) return "unknown";
         String value = error.getMessage();

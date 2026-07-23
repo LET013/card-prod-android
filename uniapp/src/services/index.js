@@ -228,6 +228,7 @@ export const services = {
 
   upsertEmployee: (employee) => nativeOrMock('employee.upsert', employee, async () => ({ employeeId: employee?.employeeId || 0, action: employee?.action || 'add' }), 20000),
   uploadFaceFeature: (payload) => nativeOrMock('employee.face.upsert', payload, async () => ({}), 20000),
+  uploadFaceImage: (payload) => nativeOrMock('face.uploadImage', payload, async () => ({ uploadId: '', faceUrl: '', faceFeature: payload?.faceFeature || '' }), 60000),
   getRegisteredFaceEmployeeIds: () => nativeOrMock('employee.face.registered', {}, async () => ({ employeeIds: [] }), 20000),
   uploadFingerprintFeature: (payload) => nativeOrMock('fingerprint.uploadFeature', payload, async () => ({ uploadId: '' }), 20000),
   uploadLogsBatch: (logs) => nativeOrMock('logs.uploadBatch', { logs }, async () => ({ receivedCount: 0, failedCount: 0 }), 30000),

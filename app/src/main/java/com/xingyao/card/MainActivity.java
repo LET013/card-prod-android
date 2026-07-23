@@ -774,6 +774,7 @@ public class MainActivity extends AppCompatActivity {
         if (mCameraProvider != null) mCameraProvider.unbindAll();
         stopLocalHttpServer();
         if (webViewManager != null) webViewManager.destroy();
+        if (jsBridge != null) jsBridge.close();
         super.onDestroy();
     }
 }

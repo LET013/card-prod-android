@@ -53,6 +53,7 @@ public final class NativeActionPolicy {
         permissions.put("employee.delete", "employee.edit");
         permissions.put("employee.upsert", "employee.edit");
         permissions.put("employee.face.upsert", "biometric.register");
+        permissions.put("face.uploadImage", "biometric.register");
         permissions.put("employee.face.registered", "employee.view");
         permissions.put("fingerprint.uploadFeature", "biometric.register");
         permissions.put("logs.uploadBatch", "debug.command");

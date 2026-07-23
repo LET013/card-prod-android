@@ -39,6 +39,23 @@ public class DocumentedBackendServiceTest {
         assertEquals(1L, transport.body.getLong("employeeId"));
     }
 
+
+    @Test(expected = IllegalArgumentException.class)
+    public void invalidEmployeeStatusIsRejected() throws Exception {
+        DocumentedBackendService service = new DocumentedBackendService(
+                temp("files"), temp("cache"), new FakeTransport());
+        service.upsertEmployee(new JSONObject().put("action", "add")
+                .put("employeeCode", "EMP001").put("employeeName", "张三")
+                .put("status", "ACTIVE"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void invalidCardAuthTypeIsRejected() throws Exception {
+        DocumentedBackendService service = new DocumentedBackendService(
+                temp("files"), temp("cache"), new FakeTransport());
+        service.reportTake("CARD001", 1, "ADMIN");
+    }
+
     private static final class FakeTransport implements DocumentedBackendService.Transport {
         String path;
         JSONObject body;

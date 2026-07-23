@@ -47,8 +47,13 @@ public final class DocumentedBackendService {
             body.put("employeeCode", requiredString(source, "employeeCode"));
             body.put("employeeName", requiredString(source, "employeeName"));
         }
-        copyOptional(source, body, "cardNo", "deptId", "phone", "email",
-                "department", "position", "status");
+        copyOptional(source, body, "cardNo", "phone", "email", "department", "position");
+        if (source.has("deptId") && !source.isNull("deptId")) {
+            body.put("deptId", requiredLong(source, "deptId"));
+        }
+        if (source.has("status") && !source.isNull("status")) {
+            body.put("status", status(source.optString("status", "")));
+        }
         return transport.postData(BackendHttpGateway.EMPLOYEE_UPSERT, body);
     }
 
@@ -64,7 +69,10 @@ public final class DocumentedBackendService {
         JSONObject body = new JSONObject()
                 .put("employeeId", requiredLong(source, "employeeId"))
                 .put("faceFeature", requiredString(source, "faceFeature"));
-        copyOptional(source, body, "faceImagePath", "deviceId");
+        copyOptional(source, body, "faceImagePath");
+        if (source.has("deviceId") && !source.isNull("deviceId")) {
+            body.put("deviceId", requiredLong(source, "deviceId"));
+        }
         return transport.postData(BackendHttpGateway.EMPLOYEE_FACE_UPSERT, body);
     }
 
@@ -114,6 +122,12 @@ public final class DocumentedBackendService {
         return transport.uploadFaceImage(requiredString(userId, "userId"), file, faceFeature);
     }
 
+    public JSONObject uploadFaceImage(String userId, String filePath,
+                                      String faceFeature) throws Exception {
+        return uploadFaceImage(userId, new File(requiredString(filePath, "filePath")),
+                faceFeature);
+    }
+
     public JSONObject downloadFirmware(String firmwareId, boolean resume) throws Exception {
         String id = requiredString(firmwareId, "firmwareId");
         File directory = new File(filesDir, "firmware");
@@ -126,7 +140,7 @@ public final class DocumentedBackendService {
         if (slotId < 1) throw new IllegalArgumentException("slotId必须大于0");
         return new JSONObject().put("cardNo", requiredString(cardNo, "cardNo"))
                 .put("slotId", slotId)
-                .put("authType", requiredString(authType, "authType"));
+                .put("authType", authType(authType));
     }
 
     private void requirePrivateFile(File file) throws Exception {
@@ -159,6 +173,23 @@ public final class DocumentedBackendService {
     private static String requiredString(String value, String field) {
         String result = value == null ? "" : value.trim();
         if (result.isEmpty()) throw new IllegalArgumentException(field + " is required");
+        return result;
+    }
+
+    private static String status(String value) {
+        String result = requiredString(value, "status");
+        if (!("0".equals(result) || "1".equals(result))) {
+            throw new IllegalArgumentException("status必须为0或1");
+        }
+        return result;
+    }
+
+    private static String authType(String value) {
+        String result = requiredString(value, "authType").toUpperCase();
+        if (!("CARD".equals(result) || "FACE".equals(result)
+                || "FINGERPRINT".equals(result))) {
+            throw new IllegalArgumentException("authType必须为CARD、FACE或FINGERPRINT");
+        }
         return result;
     }
 

@@ -65,7 +65,10 @@ public final class DeviceProvisioningManager {
 
         boolean mqttRequested = BackendEndpointSettings.MODE_MQTT.equalsIgnoreCase(
                 settings.optString("backendTransport", BackendEndpointSettings.MODE_MQTT));
-        if (forceCredentialRefresh || (mqttRequested && !hasMqttCredentials(settings))) {
+        boolean activationRequired = forceCredentialRefresh
+                || !"ACTIVATED".equalsIgnoreCase(settings.optString("activationStatus", ""))
+                || (mqttRequested && !hasMqttCredentials(settings));
+        if (activationRequired) {
             settings = performActivation(settings);
             httpGateway.configure(settings);
         }

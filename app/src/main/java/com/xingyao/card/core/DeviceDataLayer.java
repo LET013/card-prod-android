@@ -193,6 +193,13 @@ public final class DeviceDataLayer {
         return result;
     }
 
+    public JSONObject uploadFaceImage(String userId, String filePath,
+                                      String faceFeature) throws Exception {
+        JSONObject result = documentedBackendService.uploadFaceImage(userId, filePath, faceFeature);
+        stateStore.record("employee.face.imageUploaded", result);
+        return result;
+    }
+
     public JSONObject uploadLogsBatch(JSONArray logs) throws Exception {
         JSONObject settings = settingsRepository.load();
         JSONObject result = documentedBackendService.uploadLogsBatch(

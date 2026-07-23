@@ -384,9 +384,10 @@ public final class DeviceCommandCoordinator {
 
     private JSONObject baseResponse(JSONObject command, String responseCmd) {
         try {
-            return new JSONObject().put("cmd",
-                    responseCmd == null || responseCmd.trim().isEmpty()
-                            ? "commandResp" : responseCmd);
+            return new JSONObject()
+                    .put("cmd", responseCmd == null || responseCmd.trim().isEmpty()
+                            ? "commandResp" : responseCmd)
+                    .put("msgId", command == null ? "" : command.optString("msgId", ""));
         } catch (JSONException ignored) {
             return new JSONObject();
         }
