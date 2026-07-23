@@ -1,0 +1,115 @@
+name: Reference merge audit
+
+on:
+  pull_request:
+    branches:
+      - reference/motone-current
+    paths:
+      - '.github/workflows/reference-merge-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/motone-three-layer-integration
+          fetch-depth: 0
+
+      - name: Fetch both source branches
+        run: |
+          git fetch origin reference/motone-current:refs/remotes/origin/reference/motone-current
+          git fetch origin fix/device-integration-architecture:refs/remotes/origin/fix/device-integration-architecture
+
+      - name: Generate tree and diff audit
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          def run(*args):
+              return subprocess.check_output(args, text=True, errors='replace')
+
+          reference = 'origin/reference/motone-current'
+          repaired = 'origin/fix/device-integration-architecture'
+          ref_files = set(run('git','ls-tree','-r','--name-only',reference).splitlines())
+          fix_files = set(run('git','ls-tree','-r','--name-only',repaired).splitlines())
+          common = sorted(ref_files & fix_files)
+          only_ref = sorted(ref_files - fix_files)
+          only_fix = sorted(fix_files - ref_files)
+          changed = []
+          same = []
+          for path in common:
+              ref_sha = run('git','rev-parse',f'{reference}:{path}').strip()
+              fix_sha = run('git','rev-parse',f'{repaired}:{path}').strip()
+              (same if ref_sha == fix_sha else changed).append(path)
+
+          focus_prefixes = (
+              'app/src/main/java/com/xingyao/card/',
+              'app/src/test/', 'uniapp/src/', 'docs/', '.github/', '.agents/',
+              'app/build.gradle', 'app/src/main/AndroidManifest.xml', 'gradle/', 'gradlew'
+          )
+          focus_changed = [p for p in changed if p.startswith(focus_prefixes)]
+          focus_only_ref = [p for p in only_ref if p.startswith(focus_prefixes)]
+          focus_only_fix = [p for p in only_fix if p.startswith(focus_prefixes)]
+
+          report = []
+          report.append('# Motone 参考分支整合审计')
+          report.append('')
+          report.append('本报告由 Git tree 直接生成；两分支无共同祖先，因此只比较最终文件树，不推断提交关系。')
+          report.append('')
+          report.append('## 统计')
+          report.append('')
+          report.append(f'- reference 文件数：{len(ref_files)}')
+          report.append(f'- 当前修复分支文件数：{len(fix_files)}')
+          report.append(f'- 同路径且内容一致：{len(same)}')
+          report.append(f'- 同路径但内容不同：{len(changed)}')
+          report.append(f'- 仅 reference 存在：{len(only_ref)}')
+          report.append(f'- 仅修复分支存在：{len(only_fix)}')
+          report.append('')
+          report.append('## 合并原则')
+          report.append('')
+          report.append('- `reference/motone-current` 是代码基线。')
+          report.append('- FaceAISDK、CameraX、布局、资源和参考分支特有功能不得被旧实现覆盖。')
+          report.append('- 只迁移三层架构、Markdown 明确接口、必要安全修复、测试和证据门禁。')
+          report.append('- 没有文档证据的字段或行为保持空、禁用或记录。')
+          report.append('')
+          report.append('## 重点同路径差异')
+          report.append('')
+          report.extend(f'- `{p}`' for p in focus_changed)
+          report.append('')
+          report.append('## 仅参考分支存在的重点文件')
+          report.append('')
+          report.extend(f'- `{p}`' for p in focus_only_ref)
+          report.append('')
+          report.append('## 仅当前修复分支存在的重点文件')
+          report.append('')
+          report.extend(f'- `{p}`' for p in focus_only_fix)
+          report.append('')
+          report.append('## 原始 name-status')
+          report.append('')
+          report.append('```text')
+          report.append(run('git','diff','--name-status','--find-renames',reference,repaired))
+          report.append('```')
+          Path('docs/REFERENCE_MERGE_AUDIT.md').write_text('\n'.join(report), encoding='utf-8')
+          PY
+
+      - name: Commit audit report
+        shell: bash
+        env:
+          HEAD_BRANCH: fix/motone-three-layer-integration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/REFERENCE_MERGE_AUDIT.md
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m '生成Motone参考分支整合审计'
+          git push origin HEAD:"${HEAD_BRANCH}"
