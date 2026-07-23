@@ -1,32 +1,34 @@
 ---
 name: device-release-gate
-description: Final verification and delivery gate for any work-card cabinet code change. Trigger before claiming completion, committing a batch, pushing a branch, opening/updating a PR, producing an APK, or recommending release. Checks scope, diff, security, tests, build, documentation, temporary files, branch safety, and device failure scenarios.
+description: Final verification and delivery gate for any work-card cabinet code change. Trigger before claiming completion, committing a batch, pushing a branch, updating a PR, producing an APK, or recommending release. Checks scope, three-layer boundaries, V4.1 contract evidence, FaceAISDK/JNI packaging, tests, build, documentation, temporary files, branch safety, and device failure scenarios.
 ---
 
 # Device Release Gate
 
-Run this skill after implementation and before saying the task is complete.
+Run after implementation and before claiming completion.
 
 ## 1. Scope and diff
 
-- Confirm the requested batch goal in one sentence.
-- List deliberately excluded work.
-- Run and inspect:
+- Restate the requested scope.
+- List deliberately excluded work and external blockers.
+- Inspect status, diff stat, whitespace errors and full diff.
+- Remove generated APKs, temporary scripts/workflows, diagnostics, local configuration and unrelated formatting.
+- Confirm the branch is not `main`/`master`, the PR remains Draft unless explicitly requested otherwise, and auto-merge is disabled.
 
-```bash
-git status --short
-git diff --stat
-git diff --check
-git diff
-```
+## 2. Contract evidence
 
-- Remove unrelated formatting, generated assets, temporary patches, logs, APKs and local configuration.
-- Confirm no unexpected UI behavior or protocol field changed.
-- Confirm the branch is not `main`/`master` and no automatic merge is enabled.
+For every changed external field, path, method, command, enum, error code, timeout and address rule:
 
-## 2. Secret and privacy scan
+- cite V4.1 Markdown, serial Markdown or an explicit user decision;
+- verify it is not copied merely because it existed in `reference/motone-current`;
+- keep missing behavior blank/disabled and register it in `docs/CONTRACT_EVIDENCE_REGISTER.md`;
+- ensure PDF/old Markdown did not override current V4.1.
 
-Search the diff and new files for:
+Reject the change if it introduces a likely/default/test behavior without evidence.
+
+## 3. Secret and privacy scan
+
+Search changed files for actual:
 
 ```text
 ghp_
@@ -37,132 +39,119 @@ signingKey
 mqttPassword
 Authorization
 faceFeature
+fingerFeature
 base64 biometric data
-private endpoints or local.properties values
+private endpoints
+local.properties values
 ```
 
-Distinguish field names from actual secrets. No actual credential, face image, face template, fingerprint data or identity document may be committed or logged.
+Field names in code are expected; actual secrets, real biometric material and customer/private endpoint values are forbidden.
 
-## 3. Architecture checks
+## 4. Architecture checks
 
 Confirm:
 
-- UI does not become a second source of truth;
-- high-risk native actions are authorized in Android;
-- remote side effects are idempotent;
-- operations have `operationId` and explicit stages;
-- board ACK is not represented as physical completion;
-- network loss and restart behavior are defined;
-- no undocumented serial/backend assumption was introduced;
-- errors are not swallowed or only written to Logcat.
+- Vue is only an in-memory projection and does not invent business fields;
+- `JsBridge → DeviceApplicationFacade → DeviceDataLayer` is the only UI path;
+- Service only wires lifecycle;
+- Provisioning and documented endpoint validation live in Android data/business layer;
+- `BackendTransportManager`, HTTP Gateway, serial and FaceAISDK adapters do not own business truth or read Settings Repository;
+- communication results return to data layer before UI notification;
+- remote side effects are idempotent and responses reuse original `msgId`;
+- board ACK is not physical TAKE/RETURN completion;
+- no ArcSoft or `xmaihh` dependency returned.
 
-If any item fails, do not approve release.
+Any failure blocks approval.
 
-## 4. Baseline validation
+## 5. Baseline validation
 
 Run:
 
 ```bash
 node --check uniapp/src/services/nativeBridge.js
 node --check uniapp/src/services/index.js
+node --check uniapp/src/services/mockService.js
+node --check uniapp/src/state/appState.js
+cd uniapp && npm run build:h5
 ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
-./gradlew assembleDebug --no-daemon --console=plain
+./gradlew :app:assembleDebug --no-daemon --console=plain
+unzip -l app/build/outputs/apk/debug/app-debug.apk | grep lib/arm64-v8a/libSerialPort.so
+unzip -l app/build/outputs/apk/debug/app-debug.apk | grep assets/index.html
 ```
 
-When H5/UI changed, also run the project H5 build and verify assets are generated from a clean output directory.
+Do not mark a skipped check as passed.
 
-Do not mark a check as passed when it was skipped because of missing tools. Report the blocker and either install/fix the toolchain or keep the task incomplete.
-
-## 5. Specialist validation
-
-Use the applicable matrix:
+## 6. Specialist validation
 
 ### MQTT/HTTP
 
-- login/authenticated transition;
-- duplicate command before and after restart;
-- reconnect without duplicate heartbeat;
-- signature/timestamp/device rejection;
-- HTTP timeout and incremental sync failure.
+- registration→activation→config→authorization sequence;
+- HTTP/MQTT login enters authenticated only on explicit `code=0`;
+- reconnect does not duplicate heartbeat;
+- uplink signature and envelope;
+- downlink is not rejected for missing sign/deviceCode;
+- response reuses original server msgId;
+- exact ten documented downlink handlers;
+- HTTP timeout, invalid JSON, 4xx/5xx and business error;
+- incremental merge/deletion/cursor behavior.
+
+Do not test or require an undocumented timestamp window or downlink signature.
 
 ### Serial
 
-- CRC and malformed frame;
-- split/sticky packet;
-- timeout cleanup;
-- polling pause/resume;
-- explicit mapping/unmapped slot;
-- concurrent callers serialize.
+- JNI library packaged for target ABI;
+- Java/C JNI symbol match;
+- CRC and malformed/split/sticky frame;
+- raw write failure propagation;
+- logical mapping remains disabled until topology exists.
 
-### Operation state
+### FaceAISDK
 
-- board rejection;
-- physical timeout;
-- duplicate attaches to existing operation;
-- restart recovery;
-- batch child aggregation.
-
-### Diagnostics
-
-- offline persistence;
-- restart recovery;
-- ACK/pruning;
-- backoff and queue limits;
-- redaction.
+- Camera permission and CameraX lifecycle;
+- engine initialization and cleanup;
+- enrollment only for existing employee;
+- backend face-feature success before local commit;
+- sync import failure does not advance applied cursor;
+- no raw frame/feature logging.
 
 ### Android/UI
 
 - cold start offline;
 - Service restart without Activity;
-- Activity recreation;
+- Activity recreation and executor cleanup;
 - session expiry;
-- denied permission;
+- denied camera/notification permission;
 - page refresh preserves native truth.
 
-## 6. Documentation
+## 7. Documentation
 
-Update the relevant source of truth:
+Update actual sources of truth:
 
-- `docs/CODEX_PROJECT_GUIDE.md` for project-wide rules;
-- protocol/contract docs for message or frame changes;
-- state machine docs for stages/timeouts;
-- migration notes for persisted data;
-- PR body for limitations and external blockers.
+- `docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md`;
+- `docs/DEVICE_CONFIGURATION_AND_INTERFACE_AUDIT.md`;
+- `docs/CONTRACT_EVIDENCE_REGISTER.md`;
+- relevant Skills/AGENTS;
+- Draft PR body.
 
-Documentation must describe actual implemented behavior, not planned behavior.
-
-## 7. Git delivery
-
-- Stage only intended files.
-- Use a clear batch-level commit message.
-- Push the independent branch with tracking.
-- Default to a Draft PR.
-- PR body includes:
-  - root cause or goal;
-  - changed behavior;
-  - preserved compatibility;
-  - tests/build evidence;
-  - migration/rollback;
-  - unresolved external contracts.
-- Do not merge unless the user explicitly requests it after review.
+Documentation must distinguish runtime closed loop, business entrypoint, transport mapping and blocked feature.
 
 ## 8. Completion verdict
 
-Return one of:
-
 ### PASS
 
-All required checks passed. Include branch, commit, tests, build artifact status and known non-blocking limitations.
+All automated checks and required manual/device checks passed.
 
 ### CONDITIONAL PASS
 
-Only when a clearly non-production check is unavailable and the user explicitly accepts the risk. List the exact missing evidence. Never use this for security, serial topology, data migration, idempotency or a failed build.
+Only for explicitly accepted non-production missing evidence. Never use for failed build, security, topology, idempotency or data migration.
 
 ### FAIL
 
-List blockers in priority order and the next corrective action. Do not claim the feature is complete.
+List blockers and next corrective action.
 
-## Required final report
+A generated APK is not evidence of installation on rk3568_r. Unless `adb install`, cold start and relevant hardware/backend tests were run, report target-device installation as **not verified**.
+
+Required report:
 
 ```text
 Verdict
