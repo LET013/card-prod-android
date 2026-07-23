@@ -1,6 +1,6 @@
 ---
 name: android-device-integration
-description: Implement or review Android-native device integration in the work-card cabinet project, including foreground service lifecycle, WebView bridge security, native authorization, ArcFace, boot recovery, threading, local storage, and Android build behavior. Trigger for Java/Android changes; do not use for pure Vue styling or serial protocol semantics alone.
+description: Implement or review Android-native device integration in the work-card cabinet project, including foreground service lifecycle, WebView bridge security, native authorization, FaceAISDK/CameraX, JNI serial packaging, boot recovery, threading, storage, and Android build behavior. Trigger for Java/Android changes; do not use for pure Vue styling or protocol semantics alone.
 ---
 
 # Android Device Integration
@@ -11,100 +11,109 @@ Use for changes involving:
 
 - `DeviceCoreService`, `MainActivity`, `WebViewManager`, `JsBridge`;
 - Android lifecycle, foreground service, boot receiver, permissions or process restart;
-- ArcFace activation, template import, camera flow or native biometric behavior;
+- FaceAISDK engine, CameraX preview/analyzer, local face library or biometric result handling;
+- JNI serial native library and ABI packaging;
 - SharedPreferences/Room/file persistence;
 - Android thread, executor, callback and resource cleanup behavior;
-- Gradle, manifest, ProGuard or native library packaging.
+- Gradle, manifest, ProGuard, CMake or native library packaging.
+
+ArcSoft is abandoned. Do not restore `ArcFaceManager`, `arcsoft_face.jar`, `ARCSOFT_*` or READ_PHONE_STATE behavior for ArcSoft activation.
 
 ## Required preflight
 
-1. Read `AGENTS.md` and `docs/CODEX_PROJECT_GUIDE.md`.
-2. Identify Activity, Service, Repository and manager ownership.
-3. State which work runs on main thread, serial executor, IO executor or scheduler.
-4. Describe behavior for Activity recreation, Service restart and process death.
-5. Identify permissions, secrets and sensitive data touched.
+1. Read `AGENTS.md`, `docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md` and `docs/CONTRACT_EVIDENCE_REGISTER.md`.
+2. Compare device behavior with `reference/motone-current`, but do not copy its old architecture or contracts.
+3. Identify Activity, Service, data layer, Repository and adapter ownership.
+4. State which work runs on main thread, CameraX analyzer, data-layer executor, transport executor or scheduler.
+5. Describe Activity recreation, Service restart and process death behavior.
+6. Identify permissions, credentials and biometric data touched.
 
 ## Android boundaries
 
-- UI lifecycle must not own the device lifecycle. Long-lived serial/MQTT work belongs in the foreground service.
-- Static service access is transitional; avoid adding more global mutable state without a migration plan.
-- Never block the main thread on HTTP, MQTT, serial response, image download, template extraction or database work.
-- Every executor, listener, camera, engine, timer and open port needs deterministic shutdown or restart behavior.
+- UI lifecycle must not own serial/backend lifecycle; long-lived work belongs in the foreground Service container.
+- `DeviceCoreService` wires and owns lifecycle only; it does not coordinate business workflows.
+- Never block the main thread on HTTP, MQTT, serial, image download, feature extraction or database work.
+- Every executor, listener, camera, engine, timer and open port needs deterministic shutdown.
 - Bridge permission checks occur in Android immediately before the native action.
-- Expose only sanitized settings and status to H5. Keep tokens, signing keys, MQTT passwords and face features native-only.
-- External pages must never retain access to the native bridge.
+- Expose only sanitized settings/status to H5. Tokens, signing keys, MQTT passwords and face features remain native-only.
+- External pages must never retain native bridge access.
 
 ## WebView and bridge checklist
 
 - Exact trusted origin and main-frame validation.
 - External navigation blocked or opened outside the privileged WebView.
 - No universal file URL access.
-- No generic `addJavascriptInterface` surface with debugging or arbitrary native methods.
+- No generic `addJavascriptInterface` surface.
 - Every action registered in `NativeActionPolicy`.
 - High-risk actions require an unexpired native session and explicit permission.
-- Request and response include stable IDs; errors use stable codes, not only localized text.
+- Deferred network actions finish through one correlated native response.
 
 ## Service lifecycle checklist
 
 Validate:
 
-- foreground notification is created before background execution deadlines;
-- `START_STICKY` restart can reconstruct state from local storage;
-- duplicate `onCreate`/`onStartCommand` does not create duplicate schedulers;
-- listeners are detached in `onDestroy`;
-- reconnect loops are bounded and cancellable;
-- local UI remains usable in an explicit degraded state when the backend is unavailable.
+- foreground notification is created before background work;
+- `START_STICKY` reconstructs data layer and adapters;
+- duplicate lifecycle calls do not create duplicate schedulers;
+- listeners and runtime registry are cleared in `onDestroy`;
+- reconnect loops are cancellable;
+- local UI remains available in an explicit degraded state when backend or serial is unavailable.
 
-## ArcFace rules
+## FaceAISDK rules
 
-- Distinguish engine activation, engine readiness, template availability, live frame extraction and compare result.
-- A successful employee sync does not imply successful template import.
-- Persist import job status and failure reason when work can span retries.
-- Validate feature version compatibility before direct feature import.
-- Never log or upload raw frames, face images or face feature bytes.
-- Return template count, threshold, highest score and failure category for diagnostics without exposing biometric material.
+- `FaceAiManager` is an adapter; employee truth remains in `DeviceDataRepository`.
+- CameraX and `FaceEnrollmentController` live in the Activity UI flow; results return through `DeviceDataLayer`.
+- A successful employee sync does not imply a successful FaceAISDK template import.
+- Do not advance applied face cursor when import fails.
+- Local enrollment must verify the employee exists; it cannot create an employee from a face ID.
+- When the documented face-feature endpoint is used, backend success precedes local template/Map commit.
+- Do not persist or log raw frames, face images or full feature strings.
+- The multipart upload endpoint may only read an explicit real file from app-private files/cache.
+- Return counts, threshold, score and failure category without exposing biometric material.
 
 ## Fingerprint rule
 
-Android system biometric APIs authenticate an enrolled device user but do not identify which employee fingerprint matched. Never represent system biometric success as employee-level fingerprint identification. Employee-level fingerprint requires an external reader and SDK with template enrollment and 1:N matching.
+Android system biometric APIs authenticate an enrolled device user but do not identify an employee fingerprint. Never represent system success as employee-level fingerprint identification. Employee-level upload requires an external reader and real `fingerFeature/fingerIndex`.
+
+## JNI serial rules
+
+- The packaged APK must contain `lib/arm64-v8a/libSerialPort.so`.
+- JNI Java method names must match C exports.
+- Write failures must propagate; do not log and return success.
+- Device-node permission diagnostics may be reported, but do not claim a port is open without a valid file descriptor.
+- Logical slot commands remain disabled until address topology is documented.
 
 ## Storage decisions
 
 Use:
 
-- ordinary preferences only for low-risk small settings;
+- ordinary preferences only for small settings and current restart backup;
 - encrypted/keystore-backed storage for credentials and signing material;
-- Room/SQLite for operations, idempotency records, outbox events, sync jobs and queryable history;
-- atomic file replacement for large versioned snapshots only when a database is unsuitable.
+- Room/SQLite for operations, idempotency, outbox, sync jobs and history;
+- app-private files for firmware and explicit upload sources.
 
-For every persisted schema change, define migration, old-value default and rollback behavior.
+For every schema change, define migration, old-value default and rollback behavior.
 
 ## Required validation
 
 ```bash
+cd uniapp && npm run build:h5
 ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
-./gradlew assembleDebug --no-daemon --console=plain
+./gradlew :app:assembleDebug --no-daemon --console=plain
+unzip -l app/build/outputs/apk/debug/app-debug.apk | grep lib/arm64-v8a/libSerialPort.so
+unzip -l app/build/outputs/apk/debug/app-debug.apk | grep assets/index.html
 ```
 
 Also reason through:
 
-- cold start with no network;
-- service restart without Activity;
-- Activity recreation while an operation is running;
-- denied camera/phone/notification permission;
-- ArcFace unavailable or unlicensed;
-- configuration change during an active connection;
-- logout/session expiry during a high-risk operation.
+- cold start without network;
+- Service restart without Activity;
+- Activity recreation during face/fingerprint action;
+- denied camera/notification permission;
+- FaceAISDK initialization or template import failure;
+- configuration change during active connection;
+- logout/session expiry during high-risk action.
 
-## Completion output
-
-Report:
-
-- lifecycle changes;
-- thread ownership;
-- persisted state and migration;
-- permissions/security impact;
-- degraded behavior;
-- tests and build results.
+Build success is not target-device installation evidence. Report rk3568_r installation and hardware checks separately.
 
 Finish with `$device-release-gate`.
