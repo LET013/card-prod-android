@@ -1,0 +1,40 @@
+name: Copy authoritative docs
+
+on:
+  pull_request:
+    branches:
+      - reference/motone-current
+    paths:
+      - '.github/workflows/copy-authoritative-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/motone-three-layer-integration
+          fetch-depth: 0
+      - name: Copy original Markdown/PDF source directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fix/device-integration-architecture:refs/remotes/origin/fix/device-integration-architecture
+          git checkout origin/fix/device-integration-architecture -- docs/source-2026-07-02
+          test -s 'docs/source-2026-07-02/Android客户端接口文档.md'
+          test -s 'docs/source-2026-07-02/智能工卡发卡机APP通信协议文档.md'
+      - name: Commit original source documents
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/source-2026-07-02
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m '补入Markdown与PDF原始文档依据'
+          git push origin HEAD:fix/motone-three-layer-integration
