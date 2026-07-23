@@ -1,0 +1,285 @@
+name: Device integration CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - reference/motone-current
+    paths:
+      - 'app/**'
+      - 'uniapp/**'
+      - 'docs/**'
+      - '.agents/**'
+      - 'AGENTS.md'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/device-integration-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate strict layers, contracts and repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('app/src/main/java/com/xingyao/card')
+          required = {
+              'bridge': root / 'JsBridge.java',
+              'activity': root / 'MainActivity.java',
+              'face_controller': root / 'FaceEnrollmentController.java',
+              'facade': root / 'core/DeviceApplicationFacade.java',
+              'registry': root / 'core/DeviceRuntimeRegistry.java',
+              'data': root / 'core/DeviceDataLayer.java',
+              'store': root / 'core/DeviceStateStore.java',
+              'repo': root / 'core/DeviceDataRepository.java',
+              'slots': root / 'core/SlotStateRepository.java',
+              'coordinator': root / 'core/DeviceCommandCoordinator.java',
+              'provisioning': root / 'core/DeviceProvisioningManager.java',
+              'documented': root / 'core/DocumentedBackendService.java',
+              'sync': root / 'core/DeviceDataSyncManager.java',
+              'transport': root / 'core/BackendTransportManager.java',
+              'http_gateway': root / 'core/BackendHttpGateway.java',
+              'http_client': root / 'core/BackendHttpClient.java',
+              'serial': root / 'core/SerialConnectionManager.java',
+              'serial_manager': root / 'serial/SerialManager.java',
+              'serial_port': root / 'serial/SerialPort.java',
+              'face': root / 'core/FaceAiManager.java',
+              'service': root / 'service/DeviceCoreService.java',
+              'ui_state': Path('uniapp/src/state/appState.js'),
+              'ui_services': Path('uniapp/src/services/index.js'),
+          }
+          docs = [
+              Path('AGENTS.md'),
+              Path('docs/CODEX_PROJECT_GUIDE.md'),
+              Path('docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md'),
+              Path('docs/CONTRACT_EVIDENCE_REGISTER.md'),
+              Path('docs/DEVICE_CONFIGURATION_AND_INTERFACE_AUDIT.md'),
+              Path('docs/REFERENCE_UNUSED_AND_MISSING.md'),
+              Path('docs/source-2026-07-02/Android客户端接口文档.md'),
+              Path('docs/source-2026-07-02/智能工卡发卡机APP通信协议文档.md'),
+          ]
+          for path in list(required.values()) + docs:
+              assert path.is_file() and path.stat().st_size > 0, f'missing required file: {path}'
+
+          def read(name):
+              return required[name].read_text(encoding='utf-8')
+
+          bridge = read('bridge')
+          assert 'DeviceApplicationFacade' in bridge and 'facade.execute' in bridge
+          for token in ['DeviceCoreService', 'DeviceDataLayer', 'BackendTransportManager',
+                        'BackendHttpGateway', 'SerialConnectionManager', 'DeviceDataRepository']:
+              assert token not in bridge, f'JsBridge bypasses facade: {token}'
+
+          facade = read('facade')
+          assert 'DeviceRuntimeRegistry' in facade
+          for token in ['DeviceCoreService', 'BackendTransportManager', 'BackendHttpGateway',
+                        'SerialConnectionManager', 'FaceAiManager', 'DeviceDataRepository']:
+              assert token not in facade, f'Facade bypasses data layer: {token}'
+
+          activity = read('activity')
+          assert not re.findall(r'DeviceCoreService\.(?!class\b)', activity)
+          assert 'DeviceRuntimeRegistry.setUiListener' in activity
+          assert 'FaceEnrollmentController' in activity
+          assert 'jsBridge.close()' in activity
+
+          controller = read('face_controller')
+          assert 'DeviceRuntimeRegistry.require()' in controller
+          assert 'FaceSearchEngine' in controller
+          assert 'DeviceCoreService' not in controller
+
+          service = read('service')
+          for token in ['handleSocketCommand', 'handleRemoteOpen', 'sendCardEvent',
+                        'reportRuntimeEvent', 'public static JSONObject', 'setDeviceEventListener']:
+              assert token not in service, f'Service contains business logic: {token}'
+          for token in ['new DeviceDataLayer', 'DeviceRuntimeRegistry.install',
+                        'new SerialConnectionManager', 'new BackendTransportManager',
+                        'new DeviceProvisioningManager', 'new DocumentedBackendService']:
+              assert token in service, f'Service missing dependency wiring: {token}'
+
+          data = read('data')
+          for token in ['DeviceStateStore', 'DeviceProvisioningManager', 'DocumentedBackendService',
+                        'provisionAndStartBackend', 'completeFaceEnrollment',
+                        'completeFaceVerification', 'upsertEmployee', 'uploadFaceImage',
+                        'downloadFirmware']:
+              assert token in data, f'Data layer missing: {token}'
+
+          for name in ['transport', 'http_gateway', 'serial', 'face']:
+              adapter = read(name)
+              for token in ['MainActivity', 'JsBridge', 'DeviceApplicationFacade',
+                            'DeviceStateStore', 'DeviceDataLayer', 'SlotStateRepository',
+                            'DeviceDataRepository', 'NativeSettingsRepository',
+                            'DeviceCommandCoordinator', 'DeviceProvisioningManager']:
+                  assert token not in adapter, f'{name} adapter depends upward on {token}'
+
+          provisioning = read('provisioning')
+          assert 'NativeSettingsRepository' in provisioning
+          assert 'BackendHttpGateway' in provisioning
+          assert 'new BackendHttpClient' not in provisioning
+
+          constructors = []
+          for path in root.rglob('*.java'):
+              if 'new BackendHttpClient' in path.read_text(encoding='utf-8'):
+                  constructors.append(path.as_posix())
+          assert constructors == [(root / 'core/BackendHttpGateway.java').as_posix()], constructors
+
+          repo = read('repo')
+          assert 'upsertMap(employees, items, "employeeId")' in repo
+          assert 'applyFeatureDelta(faceFeatures, items, "faceId")' in repo
+          assert 'applyFeatureDelta(fingerFeatures, items, "fingerId")' in repo
+
+          serial = read('serial')
+          assert 'addressMode", "UNCONFIRMED' in serial
+          assert 'SERIAL_TOPOLOGY_UNCONFIRMED' in serial
+          assert 'return slotNumber;' not in serial
+          assert 'return ((slotNumber - 1) %' not in serial
+          slots = read('slots')
+          assert 'boardAddressLabel' not in slots
+          assert '.put("boardAddress"' not in slots
+
+          coordinator = read('coordinator')
+          expected = {'remoteOpen', 'remoteEjectAll', 'restartApp', 'syncUser', 'syncConfig',
+                      'firmwareUpgrade', 'cancelUpgrade', 'deviceSelfCheck',
+                      'enableLogUpload', 'disableLogUpload'}
+          actual = set(re.findall(r'case "([^"]+)"', coordinator))
+          assert actual == expected, sorted(actual)
+          codes = {int(x) for x in re.findall(r'\.put\("code",\s*(\d+)\)', coordinator)}
+          assert codes.issubset({0, 500}), codes
+          for token in ['case "queryStatus"', 'case "syncEmployeeData"',
+                        'case "syncFaceData"', 'case "syncFingerData"',
+                        'physicalConfirmed', '.put("recovered"']:
+              assert token not in coordinator, f'undocumented wire behavior: {token}'
+
+          documented = read('documented')
+          for token in ['upsertEmployee', 'upsertFaceFeature', 'registeredFaceEmployeeIds',
+                        'reportTake', 'reportReturn', 'uploadFingerprint', 'uploadLogsBatch',
+                        'uploadFaceImage', 'downloadFirmware']:
+              assert token in documented, f'missing documented interface entry: {token}'
+
+          gateway = read('http_gateway')
+          for token in ['EMPLOYEE_UPSERT', 'EMPLOYEE_FACE_UPSERT', 'FACE_REGISTERED',
+                        'CARD_TAKE', 'CARD_RETURN', 'FACE_UPLOAD',
+                        'FINGERPRINT_UPLOAD', 'LOGS_BATCH']:
+              assert token in gateway, f'missing documented endpoint: {token}'
+          assert 'runtimeToken' not in gateway
+
+          http_client = read('http_client')
+          assert 'HTTP基础地址不能为空' in http_client
+          assert 'card-test.quyohui.com' not in http_client
+          assert 'raw = "http://' not in http_client
+
+          build = Path('app/build.gradle').read_text(encoding='utf-8')
+          assert 'io.github.faceaisdk:Android:2026.06.25' in build
+          assert 'externalNativeBuild' in build
+          source = '\n'.join(p.read_text(encoding='utf-8', errors='ignore')
+                             for p in Path('app/src/main').rglob('*') if p.is_file())
+          for token in ['com.arcsoft', 'arcsoft_face.jar', 'ARCSOFT_', 'xmaihh',
+                        'card-test.quyohui.com', '119.146.88.108']:
+              assert token not in build and token not in source, f'pollution remains: {token}'
+          assert 'FaceAISDKEngine' in read('face')
+          assert 'closeNative' in read('serial_port')
+          assert 'public void send(byte[] data) throws IOException' in read('serial_manager')
+          assert 'Java_com_xingyao_card_serial_SerialPort_closeNative' in \
+              Path('app/src/main/cpp/SerialPort.c').read_text(encoding='utf-8')
+
+          ui_state = read('ui_state')
+          for token in ['uni.getStorageSync', 'uni.setStorageSync', 'uni.removeStorageSync',
+                        'persistSettings', 'persistSlots', 'persistEmployees',
+                        'persistRuntime', 'persistSession']:
+              assert token not in ui_state, f'Vue persists business state: {token}'
+          assert 'slots: []' in ui_state and 'employees: []' in ui_state
+          ui_services = read('ui_services')
+          for token in ['EMP-${index}', 'employee-1.jpg',
+                        'appState.settings.deviceId || appState.settings.deviceCode',
+                        'appState.employees.unshift',
+                        'appState.employees = appState.employees.filter']:
+              assert token not in ui_services, f'Vue invents business data: {token}'
+
+          bridge_users = []
+          for path in Path('uniapp/src').rglob('*'):
+              if path.suffix in {'.js', '.vue'} and \
+                      'window.android.postMessage' in path.read_text(encoding='utf-8'):
+                  bridge_users.append(path.as_posix())
+          assert bridge_users == ['uniapp/src/services/nativeBridge.js'], bridge_users
+
+          temporary = [
+              '.integration', '.diagnostic', '.refactor', '.batch1',
+              '.github/workflows/reference-merge-audit.yml',
+              '.github/workflows/apply-reference-integration.yml',
+          ]
+          for value in temporary:
+              assert not Path(value).exists(), f'temporary artifact remains: {value}'
+
+          print('strict layers, V4.1 boundaries, FaceAISDK/JNI and hygiene validated')
+          PY
+
+      - name: Validate frontend syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check uniapp/src/services/nativeBridge.js
+          node --check uniapp/src/services/index.js
+          node --check uniapp/src/services/mockService.js
+          node --check uniapp/src/state/appState.js
+
+      - name: Build uni-app H5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uniapp
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build:h5
+          test -s dist/build/h5/index.html
+
+      - name: Install generated H5 assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf app/src/main/assets/*
+          mkdir -p app/src/main/assets
+          cp -R uniapp/dist/build/h5/. app/src/main/assets/
+          test -s app/src/main/assets/index.html
+
+      - name: Run Android unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+
+      - name: Build and inspect debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --console=plain
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$apk"
+          unzip -l "$apk" > /tmp/apk-files.txt
+          grep -q 'lib/arm64-v8a/libSerialPort.so' /tmp/apk-files.txt
+          grep -q 'lib/armeabi-v7a/libSerialPort.so' /tmp/apk-files.txt
+          grep -q 'assets/index.html' /tmp/apk-files.txt
+          ! grep -qi 'arcsoft' /tmp/apk-files.txt
