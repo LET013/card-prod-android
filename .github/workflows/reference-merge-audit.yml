@@ -81,11 +81,33 @@ jobs:
           test -s app/src/main/assets/index.html
 
       - name: Run Android unit tests
+        id: android_tests
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain --stacktrace > /tmp/android-tests.log 2>&1
+          status=$?
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 0 ]; then
+            tail -n 40 /tmp/android-tests.log
+          else
+            grep -E -i '(^|[[:space:]])error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|There were failing tests|Compilation failed|Execution failed for task|Exception is:' /tmp/android-tests.log | tail -n 100 || true
+          fi
+          exit 0
+
+      - name: Upload Android test diagnostic
+        if: steps.android_tests.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: motone-android-test-diagnostic
+          path: /tmp/android-tests.log
+          retention-days: 3
+
+      - name: Stop on Android test failure
+        if: steps.android_tests.outputs.status != '0'
+        run: exit 1
 
       - name: Build debug APK
         shell: bash
