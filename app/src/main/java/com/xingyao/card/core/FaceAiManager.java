@@ -14,7 +14,7 @@ import org.json.JSONObject;
 
 import java.util.List;
 
-/** FaceAISDK platform adapter. Business state remains in DeviceDataLayer/DeviceDataRepository. */
+/** FaceAISDK platform adapter. Business state is owned outside this adapter. */
 public final class FaceAiManager {
     public interface Listener { void onStatusChanged(JSONObject status); }
 
@@ -103,7 +103,7 @@ public final class FaceAiManager {
     }
 
     public synchronized JSONObject enrollFeature(String employeeId, String employeeName,
-                                                  String faceFeature, String sourceUrl)
+                                                   String faceFeature, String sourceUrl)
             throws JSONException {
         ensureReady();
         String id = required(employeeId, "employeeId");
@@ -117,7 +117,7 @@ public final class FaceAiManager {
     }
 
     public synchronized JSONObject enrollImage(String employeeId, String employeeName,
-                                                byte[] imageBytes, String sourceUrl)
+                                                 byte[] imageBytes, String sourceUrl)
             throws JSONException {
         ensureReady();
         if (imageBytes == null || imageBytes.length == 0) throw new IllegalArgumentException("人脸图片为空");
