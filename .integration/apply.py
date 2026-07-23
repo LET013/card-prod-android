@@ -72,6 +72,21 @@ if "!gradle/wrapper/gradle-wrapper.jar" not in value:
     value = value.rstrip() + "\n\n# Keep the reproducible Gradle Wrapper binary\n!gradle/wrapper/gradle-wrapper.jar\n"
 ignore.write_text(value, encoding="utf-8")
 
+# The reference-only Activity is not in the manifest, but it must still compile while retained.
+# Adapt only its FaceAISDK wrapper method name; no backend or business contract changes.
+legacy_face = Path("app/src/main/java/com/xingyao/card/FaceEnrollmentActivity.java")
+legacy_text = legacy_face.read_text(encoding="utf-8")
+old_call = '''            manager.insertFaceFeature(faceId, faceFeature,
+                    faceName != null ? faceName : faceId, "");'''
+new_call = '''            manager.enrollFeature(faceId,
+                    faceName != null ? faceName : faceId,
+                    faceFeature, "");'''
+if old_call in legacy_text:
+    legacy_text = legacy_text.replace(old_call, new_call, 1)
+elif new_call not in legacy_text:
+    raise RuntimeError("FaceEnrollmentActivity FaceAISDK call shape changed unexpectedly")
+legacy_face.write_text(legacy_text, encoding="utf-8")
+
 # Correct remaining historical names/statements in the project guide.
 guide = Path("docs/CODEX_PROJECT_GUIDE.md")
 text = guide.read_text(encoding="utf-8")
@@ -125,6 +140,7 @@ Path("docs/REFERENCE_UNUSED_AND_MISSING.md").write_text(
 - 参考分支遗留的独立人脸Activity；
 - 当前Manifest未声明该Activity；
 - 当前MainActivity使用`FaceEnrollmentController`覆盖层；
+- 为保持参考源码可编译，仅将旧`insertFaceFeature`调用适配到现有`enrollFeature`；
 - 本批先保留，待用户统一确认后删除。
 
 ## 3. 无消费方配置候选
