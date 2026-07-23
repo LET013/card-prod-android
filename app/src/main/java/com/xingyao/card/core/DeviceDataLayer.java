@@ -36,6 +36,8 @@ public final class DeviceDataLayer {
     public interface BackendPort extends DeviceCommandCoordinator.BackendPort {
         JSONObject snapshot() throws JSONException;
         void configure(JSONObject settings);
+        void start();
+        void stop();
         String transportMode();
     }
 
@@ -47,9 +49,12 @@ public final class DeviceDataLayer {
     private final BackendPort backendPort;
     private final FaceAiManager faceAiManager;
     private final BackendHttpGateway httpGateway;
+    private final DeviceProvisioningManager provisioningManager;
+    private final DocumentedBackendService documentedBackendService;
     private final DeviceCommandCoordinator commandCoordinator;
     private final DeviceOperationEngine operationEngine;
     private final ExecutorService backendCommandExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService provisioningExecutor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService reportExecutor = Executors.newSingleThreadScheduledExecutor();
 
     private ScheduledFuture<?> slotReportTask;
@@ -66,6 +71,8 @@ public final class DeviceDataLayer {
                            BackendPort backendPort,
                            FaceAiManager faceAiManager,
                            BackendHttpGateway httpGateway,
+                           DeviceProvisioningManager provisioningManager,
+                           DocumentedBackendService documentedBackendService,
                            InboundCommandRepository inboundRepository,
                            DeviceCommandCoordinator.AppControl appControl) {
         this.settingsRepository = settingsRepository;
@@ -76,6 +83,8 @@ public final class DeviceDataLayer {
         this.backendPort = backendPort;
         this.faceAiManager = faceAiManager;
         this.httpGateway = httpGateway;
+        this.provisioningManager = provisioningManager;
+        this.documentedBackendService = documentedBackendService;
         this.operationEngine = new DeviceOperationEngine(new DeviceOperationEngine.SerialGateway() {
             @Override public JSONObject openDoor(int slotNumber, boolean administrator) throws Exception {
                 return DeviceDataLayer.this.serialPort.openDoor(slotNumber, administrator);
@@ -105,12 +114,15 @@ public final class DeviceDataLayer {
         catch (Exception ignored) { }
         refreshSyncSection();
         startSlotReporter(safeSettings);
+        provisionAndStartBackend(false);
     }
 
     public void stop() {
         stopped = true;
         stopSlotReporter();
+        backendPort.stop();
         backendCommandExecutor.shutdownNow();
+        provisioningExecutor.shutdownNow();
         reportExecutor.shutdownNow();
         stateStore.setListener(null);
     }
@@ -143,11 +155,64 @@ public final class DeviceDataLayer {
         return stateStore.searchEmployees(query);
     }
 
-    public JSONObject deleteEmployee(String id) throws JSONException {
-        String employeeId = stateStore.deleteEmployee(id);
-        if (!employeeId.isEmpty()) faceAiManager.deleteTemplate(employeeId);
-        return new JSONObject().put("success", !employeeId.isEmpty())
-                .put("id", id).put("employeeId", employeeId);
+    public JSONObject deleteEmployee(String id) throws Exception {
+        JSONObject employee = dataRepository.employee(id);
+        if (employee == null) return new JSONObject().put("success", false).put("id", id);
+        String employeeId = employee.optString("employeeId", "").trim();
+        JSONObject backend = documentedBackendService.disableEmployee(employeeId);
+        String removed = stateStore.deleteEmployee(employeeId);
+        if (!removed.isEmpty()) faceAiManager.deleteTemplate(removed);
+        JSONObject result = new JSONObject().put("success", !removed.isEmpty())
+                .put("id", id).put("employeeId", removed).put("backend", backend);
+        stateStore.record("employee.disabled", result);
+        return result;
+    }
+
+    public JSONObject upsertEmployee(JSONObject request) throws Exception {
+        JSONObject result = documentedBackendService.upsertEmployee(request);
+        stateStore.record("employee.upserted", result);
+        return result;
+    }
+
+    public JSONObject upsertFaceFeature(JSONObject request) throws Exception {
+        JSONObject result = documentedBackendService.upsertFaceFeature(request);
+        stateStore.record("employee.face.upserted", result);
+        return result;
+    }
+
+    public JSONArray registeredFaceEmployeeIds() throws Exception {
+        JSONArray result = documentedBackendService.registeredFaceEmployeeIds();
+        stateStore.record("employee.face.registered.loaded",
+                new JSONObject().put("employeeIds", result));
+        return result;
+    }
+
+    public JSONObject uploadFingerprintFeature(JSONObject request) throws Exception {
+        JSONObject result = documentedBackendService.uploadFingerprint(request);
+        stateStore.record("employee.fingerprint.uploaded", result);
+        return result;
+    }
+
+    public JSONObject uploadLogsBatch(JSONArray logs) throws Exception {
+        JSONObject settings = settingsRepository.load();
+        JSONObject result = documentedBackendService.uploadLogsBatch(
+                settings.optString("deviceCode", ""), logs);
+        stateStore.record("logs.batch.uploaded", result);
+        return result;
+    }
+
+    public JSONObject downloadFirmware(String firmwareId, boolean resume) throws Exception {
+        JSONObject result = documentedBackendService.downloadFirmware(firmwareId, resume);
+        stateStore.record("firmware.downloaded", result);
+        return result;
+    }
+
+    public JSONObject reportConfirmedTake(String cardNo, int slotId, String authType) throws Exception {
+        return documentedBackendService.reportTake(cardNo, slotId, authType);
+    }
+
+    public JSONObject reportConfirmedReturn(String cardNo, int slotId, String authType) throws Exception {
+        return documentedBackendService.reportReturn(cardNo, slotId, authType);
     }
 
     public void applySettings(JSONObject settings) throws JSONException {
@@ -163,7 +228,8 @@ public final class DeviceDataLayer {
         stateStore.configure(safeSettings);
         updateAuthorizationSection(safeSettings);
         serialPort.configure(safeSettings);
-        if (reconnectBackend) backendPort.configure(safeSettings);
+        httpGateway.configure(safeSettings);
+        if (reconnectBackend) provisionAndStartBackend(false);
         startupSyncCompleted = false;
         startSlotReporter(safeSettings);
         stateStore.updateSection("http", "http.statusChanged", httpGateway.snapshot());
@@ -247,8 +313,11 @@ public final class DeviceDataLayer {
                 ? employee == null ? "" : employee.optString("employeeName", "")
                 : employeeName.trim();
         faceAiManager.awaitReady(8000L);
+        JSONObject backend = documentedBackendService.upsertFaceFeature(new JSONObject()
+                .put("employeeId", id).put("faceFeature", faceFeature));
         JSONObject result = faceAiManager.enrollFeature(id, resolvedName, faceFeature, "LOCAL_CAMERA")
-                .put("similarity", score).put("engine", "FaceAISDK");
+                .put("similarity", score).put("engine", "FaceAISDK")
+                .put("backend", backend);
         dataRepository.markFaceRegistered(id, resolvedName, true);
         stateStore.record("biometric.face.enrolled", result);
         stateStore.emit("sync.employeeChanged", new JSONObject()
@@ -318,6 +387,19 @@ public final class DeviceDataLayer {
         }
     }
 
+    public void onRuntimeToken(String token) {
+        if (token == null || token.trim().isEmpty()) return;
+        try {
+            JSONObject settings = settingsRepository.load();
+            settings.put("runtimeToken", token.trim());
+            settingsRepository.save(settings);
+            stateStore.record("backend.runtimeToken.received",
+                    new JSONObject().put("present", true));
+        } catch (Exception error) {
+            stateStore.record("backend.runtimeToken.persistFailed", message(error));
+        }
+    }
+
     public void onBackendStatus(JSONObject status) {
         stateStore.updateSection("socket", "socket.statusChanged", status);
         if (status != null && "AUTHENTICATED".equals(status.optString("state"))) {
@@ -342,6 +424,32 @@ public final class DeviceDataLayer {
         stateStore.updateSection("recognitionEngine", "recognition.statusChanged", status);
     }
 
+    private void provisionAndStartBackend(boolean refreshCredentials) {
+        if (stopped || provisioningExecutor.isShutdown()) return;
+        stateStore.updateSection("socket", "socket.statusChanged",
+                eventState("PROVISIONING", "backend", "正在执行设备注册、激活、配置和授权查询"));
+        provisioningExecutor.execute(() -> {
+            try {
+                JSONObject saved = refreshCredentials
+                        ? provisioningManager.refreshCredentials()
+                        : provisioningManager.ensureProvisioned();
+                if (stopped) return;
+                httpGateway.configure(saved);
+                stateStore.configure(saved);
+                updateAuthorizationSection(saved);
+                serialPort.configure(saved);
+                backendPort.configure(saved);
+                backendPort.start();
+                stateStore.updateSection("http", "http.statusChanged", httpGateway.snapshot());
+                stateStore.emit("settings.changed", settingsRepository.loadForUi());
+            } catch (Exception error) {
+                stateStore.updateSection("socket", "socket.statusChanged",
+                        eventState("ERROR", "backend", safeMessage(error)));
+                stateStore.record("backend.provisioning.failed", message(error));
+            }
+        });
+    }
+
     private void runStartupSyncIfNeeded() {
         try {
             JSONObject settings = settingsRepository.load();
@@ -355,8 +463,7 @@ public final class DeviceDataLayer {
                 eventState("SYNCING", "startup", "正在主动同步员工/人脸/指纹数据"));
         new Thread(() -> {
             try {
-                JSONObject result = syncManager.syncAll(new JSONObject()
-                        .put("full", false).put("source", "startup"));
+                JSONObject result = syncManager.syncAll(false);
                 JSONObject response = BackendHttpClient.copyWithout(result, "snapshot")
                         .put("state", "SUCCESS").put("cmd", "startup")
                         .put("message", "启动同步完成")
@@ -416,10 +523,7 @@ public final class DeviceDataLayer {
     private void updateAuthorizationSection(JSONObject settings) {
         JSONObject authorization = settings == null ? null : settings.optJSONObject("deviceAuthorization");
         if (authorization == null) {
-            String activation = settings == null ? "" : settings.optString("activationStatus", "");
-            authorization = eventState("ACTIVATED".equalsIgnoreCase(activation)
-                    ? "AUTHORIZED" : "PENDING", "authorization",
-                    "ACTIVATED".equalsIgnoreCase(activation) ? "设备已激活" : "等待设备授权查询");
+            authorization = eventState("PENDING", "authorization", "等待设备授权查询");
         }
         stateStore.updateSection("deviceAuthorization", "authorization.statusChanged", authorization);
     }

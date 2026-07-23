@@ -27,7 +27,9 @@ import com.xingyao.card.core.InboundCommandRepository;
 import com.xingyao.card.core.NativeSettingsRepository;
 import com.xingyao.card.core.SerialConnectionManager;
 import com.xingyao.card.core.SlotStateRepository;
-import com.xingyao.card.core.WebSocketConnectionManager;
+import com.xingyao.card.core.BackendTransportManager;
+import com.xingyao.card.core.DocumentedBackendService;
+import com.xingyao.card.core.DeviceProvisioningManager;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -44,7 +46,7 @@ public final class DeviceCoreService extends Service {
 
     private DeviceDataLayer dataLayer;
     private SerialConnectionManager serialManager;
-    private WebSocketConnectionManager backendManager;
+    private BackendTransportManager backendManager;
     private FaceAiManager faceAiManager;
 
     @Override
@@ -63,7 +65,12 @@ public final class DeviceCoreService extends Service {
         DeviceEventLogRepository eventLogRepository = new DeviceEventLogRepository(this);
         DeviceStateStore stateStore = new DeviceStateStore(slotRepository, dataRepository,
                 eventLogRepository);
-        BackendHttpGateway httpGateway = new BackendHttpGateway(settingsRepository);
+        BackendHttpGateway httpGateway = new BackendHttpGateway();
+        httpGateway.configure(settings);
+        DeviceProvisioningManager provisioningManager = new DeviceProvisioningManager(
+                this, settingsRepository, httpGateway);
+        DocumentedBackendService documentedBackendService = new DocumentedBackendService(
+                this, httpGateway);
 
         final DeviceDataLayer[] holder = new DeviceDataLayer[1];
         serialManager = new SerialConnectionManager(new SerialConnectionManager.Listener() {
@@ -79,8 +86,8 @@ public final class DeviceCoreService extends Service {
                 if (holder[0] != null) holder[0].onSlotStatus(slot);
             }
         });
-        backendManager = new WebSocketConnectionManager(this, settingsRepository,
-                new WebSocketConnectionManager.Listener() {
+        backendManager = new BackendTransportManager(httpGateway,
+                new BackendTransportManager.Listener() {
                     @Override public void onStatusChanged(JSONObject status) {
                         if (holder[0] != null) holder[0].onBackendStatus(status);
                     }
@@ -91,6 +98,9 @@ public final class DeviceCoreService extends Service {
 
                     @Override public void onMessage(JSONObject message) {
                         if (holder[0] != null) holder[0].onBackendMessage(message);
+                    }
+                    @Override public void onRuntimeToken(String token) {
+                        if (holder[0] != null) holder[0].onRuntimeToken(token);
                     }
                 });
         faceAiManager = FaceAiManager.getInstance();
@@ -129,6 +139,8 @@ public final class DeviceCoreService extends Service {
         DeviceDataLayer.BackendPort backendPort = new DeviceDataLayer.BackendPort() {
             @Override public JSONObject snapshot() throws JSONException { return backendManager.snapshot(); }
             @Override public void configure(JSONObject value) { backendManager.configure(value); }
+            @Override public void start() { backendManager.start(); }
+            @Override public void stop() { backendManager.stop(); }
             @Override public void send(JSONObject payload) throws Exception { backendManager.send(payload); }
             @Override public boolean isAuthenticated() { return backendManager.isAuthenticated(); }
             @Override public String transportMode() { return backendManager.transportMode(); }
@@ -144,12 +156,13 @@ public final class DeviceCoreService extends Service {
 
         dataLayer = new DeviceDataLayer(settingsRepository, stateStore, dataRepository,
                 syncManager, serialPort, backendPort, faceAiManager, httpGateway,
+                provisioningManager, documentedBackendService,
                 new InboundCommandRepository(this), appControl);
         holder[0] = dataLayer;
         DeviceRuntimeRegistry.install(dataLayer);
 
+        serialManager.configure(settings);
         serialManager.start();
-        backendManager.start();
         faceAiManager.start();
         dataLayer.start(settings);
     }
@@ -169,7 +182,6 @@ public final class DeviceCoreService extends Service {
     public void onDestroy() {
         DeviceDataLayer current = dataLayer;
         if (current != null) current.stop();
-        if (backendManager != null) backendManager.stop();
         if (serialManager != null) serialManager.stop();
         if (faceAiManager != null) faceAiManager.stop();
         DeviceRuntimeRegistry.clear(current);

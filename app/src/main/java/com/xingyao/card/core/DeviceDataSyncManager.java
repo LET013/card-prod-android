@@ -32,10 +32,9 @@ public final class DeviceDataSyncManager {
         this.httpGateway = httpGateway;
     }
 
-    public synchronized JSONObject syncAll(JSONObject command) throws Exception {
+    public synchronized JSONObject syncAll(boolean full) throws Exception {
         JSONObject settings = settingsRepository.load();
         String apiBaseUrl = BackendHttpGateway.baseUrl(settings);
-        boolean full = isFull(command);
 
         PageResult employeePage = pullPaged(BackendHttpGateway.EMPLOYEE_SYNC, "employees",
                 full ? 0L : dataRepository.employeeSyncVersion(), EMPLOYEE_PAGE_SIZE,
@@ -78,9 +77,8 @@ public final class DeviceDataSyncManager {
                 .put("snapshot", snapshot);
     }
 
-    public synchronized JSONObject syncEmployees(JSONObject command) throws Exception {
+    public synchronized JSONObject syncEmployees(boolean full) throws Exception {
         JSONObject settings = settingsRepository.load();
-        boolean full = isFull(command);
         PageResult page = pullPaged(BackendHttpGateway.EMPLOYEE_SYNC, "employees",
                 full ? 0L : dataRepository.employeeSyncVersion(), EMPLOYEE_PAGE_SIZE,
                 null, "deletedEmployeeIds");
@@ -99,12 +97,10 @@ public final class DeviceDataSyncManager {
                 .put("snapshot", snapshot);
     }
 
-    public synchronized JSONObject syncFaces(JSONObject command) throws Exception {
+    public synchronized JSONObject syncFaces(boolean full) throws Exception {
         JSONObject settings = settingsRepository.load();
-        boolean full = isFull(command);
         JSONObject scope = new JSONObject().put("includeFlags",
-                command == null ? settings.optInt("faceSyncIncludeFlags", 3)
-                        : command.optInt("includeFlags", settings.optInt("faceSyncIncludeFlags", 3)));
+                settings.optInt("faceSyncIncludeFlags", 3));
         PageResult page = pullPaged(BackendHttpGateway.FACE_SYNC, "faceFeatures",
                 full ? 0L : dataRepository.faceSyncVersion(), FACE_PAGE_SIZE, scope, null);
         JSONArray faces = normalizeFaceFeatures(page.items, BackendHttpGateway.baseUrl(settings));
@@ -122,9 +118,8 @@ public final class DeviceDataSyncManager {
                 .put("snapshot", snapshot);
     }
 
-    public synchronized JSONObject syncFingers(JSONObject command) throws Exception {
+    public synchronized JSONObject syncFingers(boolean full) throws Exception {
         JSONObject settings = settingsRepository.load();
-        boolean full = isFull(command);
         PageResult page = pullPaged(BackendHttpGateway.FINGER_SYNC, "fingerFeatures",
                 full ? 0L : dataRepository.fingerSyncVersion(), FINGER_PAGE_SIZE,
                 null, null);
@@ -299,10 +294,6 @@ public final class DeviceDataSyncManager {
     }
 
 
-    private static boolean isFull(JSONObject command) {
-        return command != null && (command.optBoolean("full", false)
-                || command.optBoolean("fullSync", false));
-    }
 
     private static boolean isDisabled(JSONObject item) {
         String status = item == null ? "" : item.optString("status", "");

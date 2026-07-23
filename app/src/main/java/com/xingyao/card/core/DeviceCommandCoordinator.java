@@ -73,7 +73,7 @@ public final class DeviceCommandCoordinator {
         if (InboundCommandRepository.STATUS_DUPLICATE_PROCESSING.equals(begin.status)) {
             JSONObject processing = baseResponse(safeCommand, cmd + "Resp");
             try {
-                processing.put("code", 202).put("msg", "相同指令正在处理中");
+                processing.put("code", 500).put("msg", "相同指令正在处理中");
                 send(processing);
             } catch (Exception error) {
                 recordSendFailure(processing, error);
@@ -83,7 +83,7 @@ public final class DeviceCommandCoordinator {
         if (InboundCommandRepository.STATUS_REJECTED.equals(begin.status)) {
             JSONObject rejected = baseResponse(safeCommand, cmd.isEmpty() ? "commandResp" : cmd + "Resp");
             try {
-                rejected.put("code", 4001).put("msg", begin.message);
+                rejected.put("code", 500).put("msg", begin.message);
                 send(rejected);
                 stateStore.record("security.command.rejected", rejected);
             } catch (Exception error) {
@@ -107,13 +107,13 @@ public final class DeviceCommandCoordinator {
                 default:
                     complete(safeCommand, baseResponse(safeCommand,
                             cmd.isEmpty() ? "commandResp" : cmd + "Resp")
-                            .put("code", 9000).put("msg", "unsupported command"), false);
+                            .put("code", 500).put("msg", "unsupported command"), false);
             }
         } catch (Exception error) {
             try {
                 JSONObject response = baseResponse(safeCommand,
                         cmd.isEmpty() ? "commandResp" : cmd + "Resp")
-                        .put("code", 9000).put("msg", safeMessage(error));
+                        .put("code", 500).put("msg", safeMessage(error));
                 complete(safeCommand, response, false);
             } catch (Exception ignored) { }
         }
@@ -212,7 +212,7 @@ public final class DeviceCommandCoordinator {
             stateStore.record("operation.remoteOpen.boardAcked", result);
             complete(command, response.put("code", 0).put("msg", "success"), true);
         } catch (Exception error) {
-            complete(command, response.put("code", 4003)
+            complete(command, response.put("code", 500)
                     .put("msg", safeMessage(error)), false);
         }
     }
@@ -220,7 +220,7 @@ public final class DeviceCommandCoordinator {
     private void handleRemoteEjectAll(JSONObject command) throws Exception {
         JSONObject response = baseResponse(command, "remoteEjectAllResp");
         if (!command.optBoolean("confirm", false)) {
-            complete(command, response.put("code", 4001)
+            complete(command, response.put("code", 500)
                     .put("msg", "confirm required"), false);
             return;
         }
@@ -229,11 +229,11 @@ public final class DeviceCommandCoordinator {
                     command.optString("msgId", ""));
             stateStore.record("operation.remoteEjectAll.boardAcked", result);
             int failedCount = result.optInt("failedCount", 0);
-            complete(command, response.put("code", failedCount == 0 ? 0 : 4001)
+            complete(command, response.put("code", failedCount == 0 ? 0 : 500)
                     .put("msg", failedCount == 0 ? "success"
                             : "部分或全部单板未应答"), failedCount == 0);
         } catch (Exception error) {
-            complete(command, response.put("code", 4003)
+            complete(command, response.put("code", 500)
                     .put("msg", safeMessage(error)), false);
         }
     }
@@ -247,14 +247,13 @@ public final class DeviceCommandCoordinator {
         new Thread(() -> {
             try {
                 JSONObject result;
-                if ("employees".equals(scope)) result = syncManager.syncEmployees(command);
-                else if ("faces".equals(scope)) result = syncManager.syncFaces(command);
-                else if ("fingers".equals(scope)) result = syncManager.syncFingers(command);
-                else result = syncManager.syncAll(command);
+                if ("employees".equals(scope)) result = syncManager.syncEmployees(false);
+                else if ("faces".equals(scope)) result = syncManager.syncFaces(false);
+                else if ("fingers".equals(scope)) result = syncManager.syncFingers(false);
+                else result = syncManager.syncAll(false);
                 JSONObject responseData = BackendHttpClient.copyWithout(result, "snapshot");
                 complete(command, baseResponse(command, command.optString("cmd", "sync") + "Resp")
-                        .put("code", 0).put("status", "SUCCESS")
-                        .put("data", responseData), true);
+                        .put("code", 0).put("msg", "success"), true);
                 JSONObject event = new JSONObject(responseData.toString())
                         .put("state", "SUCCESS")
                         .put("message", "同步完成")
@@ -264,7 +263,7 @@ public final class DeviceCommandCoordinator {
                 try {
                     complete(command, baseResponse(command,
                             command.optString("cmd", "sync") + "Resp")
-                            .put("code", 9000).put("status", "FAILED")
+                            .put("code", 500)
                             .put("msg", safeMessage(error)), false);
                     stateStore.updateSection("sync", "sync.statusChanged",
                             new JSONObject().put("state", "ERROR")
@@ -287,7 +286,7 @@ public final class DeviceCommandCoordinator {
     private void handleUnsupportedUpgrade(JSONObject command, boolean cancel) throws Exception {
         complete(command, baseResponse(command,
                 cancel ? "cancelUpgradeResp" : "firmwareUpgradeResp")
-                .put("code", 501)
+                .put("code", 500)
                 .put("msg", cancel ? "当前没有可取消的真实固件升级任务"
                         : "当前版本尚未实现固件下载安装"), false);
     }

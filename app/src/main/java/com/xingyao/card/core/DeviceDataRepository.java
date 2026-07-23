@@ -106,7 +106,7 @@ public final class DeviceDataRepository {
                                                        boolean full, long syncVersion)
             throws JSONException {
         if (full) employees.clear();
-        upsertMap(employees, items, "employeeId", "employeeCode", "id");
+        upsertMap(employees, items, "employeeId");
         if (deletedEmployeeIds != null) {
             for (int index = 0; index < deletedEmployeeIds.length(); index++) {
                 String id = String.valueOf(deletedEmployeeIds.opt(index)).trim();
@@ -169,12 +169,9 @@ public final class DeviceDataRepository {
 
     private void loadBackingStore() {
         synchronized (this) {
-            boolean employeeCorrupt = !loadMap(KEY_EMPLOYEES, employees,
-                    "employeeId", "employeeCode", "id");
-            boolean faceCorrupt = !loadMap(KEY_FACE_FEATURES, faceFeatures,
-                    "faceId", "employeeId", "id");
-            boolean fingerCorrupt = !loadMap(KEY_FINGER_FEATURES, fingerFeatures,
-                    "fingerId", "employeeId", "id");
+            boolean employeeCorrupt = !loadMap(KEY_EMPLOYEES, employees, "employeeId");
+            boolean faceCorrupt = !loadMap(KEY_FACE_FEATURES, faceFeatures, "faceId");
+            boolean fingerCorrupt = !loadMap(KEY_FINGER_FEATURES, fingerFeatures, "fingerId");
 
             employeeSyncVersion = employeeCorrupt ? 0L
                     : preferences.getLong(KEY_EMPLOYEE_SYNC_VERSION, 0L);
@@ -249,7 +246,7 @@ public final class DeviceDataRepository {
         for (int index = 0; index < items.length(); index++) {
             JSONObject item = items.optJSONObject(index);
             if (item == null) continue;
-            String key = firstKey(item, primaryKey, "id");
+            String key = firstKey(item, primaryKey);
             if (key.isEmpty()) continue;
             if (isDeleted(item)) {
                 target.remove(key);

@@ -221,10 +221,17 @@ export const services = {
   },
 
   async deleteEmployee(id) {
-    const result = await nativeOrMock('employee.delete', { id }, () => mockService.deleteEmployee(id))
+    const result = await nativeOrMock('employee.delete', { id }, () => mockService.deleteEmployee(id), 20000)
     await services.searchEmployees('')
     return result
   },
+
+  upsertEmployee: (employee) => nativeOrMock('employee.upsert', employee, async () => ({ employeeId: employee?.employeeId || 0, action: employee?.action || 'add' }), 20000),
+  uploadFaceFeature: (payload) => nativeOrMock('employee.face.upsert', payload, async () => ({}), 20000),
+  getRegisteredFaceEmployeeIds: () => nativeOrMock('employee.face.registered', {}, async () => ({ employeeIds: [] }), 20000),
+  uploadFingerprintFeature: (payload) => nativeOrMock('fingerprint.uploadFeature', payload, async () => ({ uploadId: '' }), 20000),
+  uploadLogsBatch: (logs) => nativeOrMock('logs.uploadBatch', { logs }, async () => ({ receivedCount: 0, failedCount: 0 }), 30000),
+  downloadFirmware: (firmwareId, resume = true) => nativeOrMock('firmware.download', { firmwareId, resume }, async () => ({ filePath: '', bytesWritten: 0 }), 120000),
 
   getHistory: () => mockOnly('history.get', () => mockService.getHistory()),
   getUpgradeFiles: () => mockOnly('upgrade.files', () => mockService.getUpgradeFiles()),

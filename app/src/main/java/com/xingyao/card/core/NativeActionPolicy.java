@@ -51,6 +51,12 @@ public final class NativeActionPolicy {
         permissions.put("socket.getStatus", "cabinet.view");
         permissions.put("employee.search", "employee.view");
         permissions.put("employee.delete", "employee.edit");
+        permissions.put("employee.upsert", "employee.edit");
+        permissions.put("employee.face.upsert", "biometric.register");
+        permissions.put("employee.face.registered", "employee.view");
+        permissions.put("fingerprint.uploadFeature", "biometric.register");
+        permissions.put("logs.uploadBatch", "debug.command");
+        permissions.put("firmware.download", "upgrade.firmware");
         permissions.put("app.restart", "app.restart");
         REQUIRED_PERMISSIONS = Collections.unmodifiableMap(permissions);
     }
