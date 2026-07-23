@@ -1,0 +1,48 @@
+name: Diagnose device CI
+
+on:
+  pull_request:
+    branches:
+      - reference/motone-current
+    paths:
+      - '.github/workflows/diagnose-device-ci.yml'
+      - '.github/workflows/device-integration-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and run permanent static checker
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/device-integration-ci.yml').read_text(encoding='utf-8')
+          marker = "python3 - <<'PY'\n"
+          start = source.index(marker) + len(marker)
+          end = source.index('\n          PY', start)
+          script = '\n'.join(line[10:] if line.startswith('          ') else line
+                             for line in source[start:end].splitlines())
+          Path('/tmp/device-static-check.py').write_text(script, encoding='utf-8')
+          PY
+          set +e
+          python3 /tmp/device-static-check.py > /tmp/device-static-check.log 2>&1
+          status=$?
+          cat /tmp/device-static-check.log
+          echo "$status" > /tmp/device-static-check.status
+          exit 0
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-ci-static-diagnostic
+          path: |
+            /tmp/device-static-check.py
+            /tmp/device-static-check.log
+            /tmp/device-static-check.status
+          retention-days: 3
