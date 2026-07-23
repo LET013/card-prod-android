@@ -1,57 +1,78 @@
 ---
 name: backend-contract-mqtt-http
-description: Implement, debug, or review backend communication contracts for the work-card cabinet, including HTTP provisioning and sync, MQTT connect/subscribe/login/heartbeat, signed envelopes, remote commands, response correlation, idempotency, reconnect behavior, and fallback reporting. Trigger for BackendHttpClient, provisioning, WebSocketConnectionManager, MQTT commands, or backend contract work.
+description: Implement, debug, or review V4.1 backend contracts for the work-card cabinet, including HTTP provisioning and sync, BackendTransportManager MQTT/HTTP/TCP sessions, signed uplink envelopes, documented downlink commands, response msgId correlation, idempotency, reconnect behavior, multipart upload and firmware download. Trigger for BackendHttpClient, BackendHttpGateway, DeviceProvisioningManager, BackendTransportManager, DocumentedBackendService or backend contract work.
 ---
 
 # Backend Contract: MQTT + HTTP
+
+## Authoritative source
+
+Use `docs/source-2026-07-02/Android客户端接口文档.md` V4.1. Older Markdown, PDFs and `reference/motone-current` do not override the backend contract.
+
+Every field, method, path, enum, error code and response must have a V4.1 citation or an explicit user decision. Unknown behavior stays disabled or recorded in `docs/CONTRACT_EVIDENCE_REGISTER.md`.
+
+## Layer ownership
+
+Android business layer:
+
+- `DeviceProvisioningManager`: version, registration, activation, verification, config and authorization sequence;
+- `DeviceDataSyncManager`: paginated employee/face/finger sync and local apply;
+- `DocumentedBackendService`: exact request validation for documented endpoints;
+- `DeviceCommandCoordinator`: ten documented downlink commands, idempotency and responses.
+
+Communication layer:
+
+- `BackendTransportManager`: MQTT/HTTP runtime login, heartbeat, subscribe, envelope, send/receive;
+- `BackendHttpGateway` / `BackendHttpClient`: HTTP JSON, multipart and download only.
+
+Communication classes must not read `NativeSettingsRepository`, run provisioning, or update business repositories.
 
 ## Channel ownership
 
 Use HTTP for:
 
 - app version check;
-- device registration, activation and verification;
-- configuration retrieval;
-- paginated employee/face/fingerprint synchronization;
-- image, APK and firmware download;
-- batch upload and real-time channel fallback.
+- registration, activation and verification;
+- configuration and authorization query;
+- HTTP login and heartbeat;
+- employee/face/fingerprint synchronization;
+- employee and face-feature update;
+- face image and fingerprint upload;
+- firmware download and batch logs;
+- documented HTTP equivalents of device-originated events.
 
 Use MQTT for:
 
-- connect, subscribe and business login;
+- real-time connect/subscribe/business login;
 - heartbeat;
-- remote commands and command responses;
-- live slot status, card events, self-check and hardware faults;
-- near-real-time diagnostic events when enabled.
+- the ten documented downlink commands and responses;
+- live device-originated events.
 
-Never put large binary/base64 payloads into MQTT when HTTP download is available.
+HTTP mode has no documented downlink channel. Do not invent polling, SSE or WebSocket commands.
 
-## Connection state machine
+## Connection states
 
-Use explicit states:
+Keep transport and business authentication distinct:
 
 ```text
 DISCONNECTED
-CONNECTING
-CONNECTED
+CONNECTING / TRANSPORT_CONNECTED
 SUBSCRIBED
 LOGIN_SENT
 AUTHENTICATED
-DEGRADED
+ERROR / PENDING_CREDENTIALS
 STOPPED
 ```
 
-Rules:
-
 - TCP/MQTT connect is not business authentication.
-- Do not start authenticated-only sync or command execution before valid `loginResp`.
-- A failed/expired login must clear authenticated state and trigger bounded recovery or reprovisioning.
-- Reconnect must resubscribe and relogin without duplicating schedulers or heartbeats.
-- Heartbeat success does not replace login state.
+- Only an explicit login response with `code=0` enters `AUTHENTICATED`.
+- Reconnect clears old connecting/authenticated state, resubscribes and relogins.
+- One heartbeat scheduler per active session.
+- HTTP/MQTT login token may be saved, but V4.1 does not define it as Bearer; all HTTP Bearer remains `deviceToken`.
 
-## Envelope
+## MQTT envelope
 
-All device-originated business messages should be built by one envelope function:
+Device-originated uplink:
 
 ```json
 {
@@ -64,103 +85,118 @@ All device-originated business messages should be built by one envelope function
 }
 ```
 
-Do not hand-build variants across handlers. Signature input ordering, canonicalization, encoding and Base64 behavior must be documented and tested against backend vectors.
+Server downlink:
 
-## Downlink validation order
+```json
+{
+  "msgId": "server-generated",
+  "cmd": "remoteOpen",
+  "timestamp": 0,
+  "data": {}
+}
+```
 
-Before side effects:
+V4.1 explicitly says downlink has no `sign` and does not define `deviceCode` there. Do not reject valid downlink for missing those fields.
 
-1. parse JSON and enforce size/depth limits;
-2. validate `cmd`, `msgId`, timestamp window and device identity;
-3. validate signature when the contract requires it;
-4. check persistent `msgId` idempotency;
-5. validate command parameters;
-6. create or recover `operationId`;
-7. execute through the shared business entry;
-8. persist terminal response before publishing it;
-9. reuse the stored response for duplicate delivery.
+Response must reuse the original server `msgId`; it must not generate a new response ID.
 
-Unknown commands receive a stable unsupported response and no side effects.
+Signature construction and data serialization must follow V4.1 exactly. Do not introduce alternative canonicalization or compatibility signatures without backend evidence.
+
+## Downlink commands
+
+The only allowed commands are:
+
+```text
+remoteOpen
+remoteEjectAll
+restartApp
+syncUser
+syncConfig
+firmwareUpgrade
+cancelUpgrade
+deviceSelfCheck
+enableLogUpload
+disableLogUpload
+```
+
+Log-upload toggles have no terminal response. Unknown commands have no side effect and use only documented generic failure semantics.
+
+V4.1 lists `timestamp` but does not define a tolerance window. Do not invent a 10-minute window or similar rejection policy.
 
 ## Idempotency
 
-- Persist enough data to survive process death and reboot.
-- Use `msgId` as the remote request key; do not use timestamp alone.
-- Store processing state, `operationId`, terminal code and serialized response.
-- Define behavior for duplicate while RUNNING: return accepted/in-progress or wait, never start a second operation.
-- Apply retention and maximum size; prune only terminal records older than the contract window.
+- Persist `msgId` before any remote side effect.
+- Store processing state and terminal serialized response.
+- Duplicate terminal delivery reuses the stored response and original `msgId`.
+- Never automatically replay an uncertain side effect after process death.
+- V4.1 does not define PROCESSING recovery time; do not invent one.
+- Prune only terminal records; do not delete active records to satisfy a size cap.
 
-## HTTP reliability
+## HTTP rules
 
-- Use bounded connect/read/write timeouts.
-- Retry only operations that are safe or carry idempotency keys.
-- Respect HTTP status, backend business code and parse failures separately.
-- Do not advance sync/apply version until local application succeeds.
-- Download to a temporary file, verify size/hash/signature, then atomically promote.
-- Do not silently fall back to test servers or Mock in Release.
+- Registration and app-version check are anonymous.
+- All other documented HTTP requests use `Authorization: Bearer deviceToken`.
+- Require an explicit HTTP/HTTPS base URL; never inject a test server or guess scheme.
+- Validate HTTP status, JSON syntax and backend business code separately.
+- V4.1 contains success examples with both `code=200` and `code=0`; accept both and keep the conflict recorded.
+- Multipart face upload requires `userId`, real file and optional `faceFeature`.
+- Firmware download supports Range; download to app-private storage. Download completion is not OTA installation completion.
 
 ## Sync semantics
 
-Before implementing incremental sync, freeze:
+Use exact documented keys:
 
-- cursor/version meaning;
-- full snapshot versus delta;
-- upsert key;
-- deletion/tombstone representation;
-- page consistency and final commit point;
-- partial failure/retry behavior.
+```text
+employeeId
+faceId
+fingerId
+```
 
-Incremental results merge by primary key. They never replace the entire local collection unless explicitly marked as a full snapshot and applied atomically.
+Missing primary keys are invalid; never substitute `employeeCode`, generic `id` or generated keys.
 
-For face data, separate:
+Incremental results merge by primary key. Employee deletion uses `deletedEmployeeIds`; face/finger item `status=1` disables that specific record.
+
+For face data keep:
 
 ```text
 fetchedVersion
-locallyAppliedVersion
-templateImportJob status
+appliedVersion
 ```
 
-Do not mark applied when feature import or image extraction fails.
+Do not advance applied version when FaceAISDK template application fails.
 
-## Response correlation
+`syncUser` does not contain undocumented `full/fullSync` controls. Internal full-sync decisions must not be accepted from arbitrary downlink fields.
 
-Every command response and diagnostic should retain:
+## Documented endpoint entrypoints
 
-```text
-msgId
-operationId
-cmd
-source
-receivedAt
-completedAt
-code
-stage
-```
+`DocumentedBackendService` may expose interfaces that lack a current producer, but must not manufacture data:
 
-Preserve the original request ID in downstream serial and business diagnostics.
+- card take/return wait for physical confirmation;
+- fingerprint upload waits for external hardware feature data;
+- logs batch waits for a real outbox/caller;
+- face multipart waits for a real app-private file;
+- firmware download does not install firmware.
 
 ## Security
 
-- Never log credentials, signing keys, tokens or full biometric payloads.
-- Keep clocks and timestamp tolerance explicit; report clock skew distinctly.
-- Rotate/replace credentials atomically.
-- Clear old credentials after successful reprovisioning.
-- Prefer TLS endpoints in production; any cleartext mode must be explicit and environment-scoped.
+- Never log credentials, signing keys, tokens, full envelopes with secrets, face images/features or fingerprint features.
+- HTTP and MQTT hosts are independent local deployment configuration.
+- TLS/cleartext choice must be explicit; no guessed default.
+- Remote fields cannot overwrite independent endpoints unless V4.1 formally defines them.
 
 ## Required tests
 
-- connect → subscribe → login → authenticated;
-- failed login and credential expiry;
-- reconnect/resubscribe/relogin;
-- one heartbeat scheduler after repeated reconnects;
-- signature known vectors and tamper rejection;
-- timestamp/device mismatch rejection;
-- duplicate remote open before and after restart;
-- duplicate while operation is running;
-- terminal response replay;
-- HTTP timeout, 4xx, 5xx and invalid JSON;
-- incremental merge, deletion, page failure and apply-version separation.
+- registration→activation→config→authorization;
+- HTTP and MQTT login state;
+- reconnect without duplicate heartbeat;
+- uplink signature known vector;
+- downlink missing sign/deviceCode accepted when otherwise valid;
+- exact ten-command handler set;
+- response reuses original msgId;
+- duplicate before/after restart;
+- HTTP timeout, non-JSON, 4xx/5xx and business error;
+- employee/face/finger pagination, deletion and cursor separation;
+- multipart private-file restriction;
+- firmware Range resume behavior.
 
-## Completion output
-
-Document exact request/response examples, state transitions, retry rules, idempotency retention and unresolved backend questions. Finish with `$device-release-gate`.
+Finish with `$device-release-gate`.
