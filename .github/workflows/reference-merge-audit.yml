@@ -1,4 +1,4 @@
-name: Apply Motone three-layer integration
+name: Export reference permanent CI
 
 on:
   pull_request:
@@ -6,17 +6,16 @@ on:
       - reference/motone-current
     paths:
       - '.github/workflows/reference-merge-audit.yml'
-      - '.integration/**'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  integrate-and-verify:
+  export:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 10
     steps:
       - name: Check out integration branch
         uses: actions/checkout@v4
@@ -24,129 +23,31 @@ jobs:
           ref: fix/motone-three-layer-integration
           fetch-depth: 0
 
-      - name: Fetch selective migration source
+      - name: Fetch permanent CI source
         run: git fetch origin fix/device-integration-architecture:refs/remotes/origin/fix/device-integration-architecture
 
-      - name: Apply selected files
-        run: python3 .integration/apply.py
-
-      - name: Static scope and pollution checks
+      - name: Prepare reference-targeted CI
         shell: bash
         run: |
           set -euo pipefail
-          test -f app/src/main/java/com/xingyao/card/core/BackendTransportManager.java
-          test -f app/src/main/java/com/xingyao/card/core/DocumentedBackendService.java
-          test -f app/src/main/java/com/xingyao/card/core/FaceAiManager.java
-          test -f app/src/main/java/com/xingyao/card/FaceEnrollmentController.java
-          test -f app/src/main/cpp/SerialPort.c
-          test -f docs/REFERENCE_UNUSED_AND_MISSING.md
-          ! git ls-files | grep -E '(^|/)\.cxx/|(^|/)build/|app/src/main/assets/'
-          ! grep -R 'com\.arcsoft\|arcsoft_face\.jar\|ARCSOFT_' app/build.gradle app/src/main/java app/src/main/AndroidManifest.xml
-          ! grep -R 'card-test\.quyohui\.com\|119\.146\.88\.108' app/src/main/java uniapp/src
-          ! grep -R 'DeviceCoreService\.' app/src/main/java/com/xingyao/card/MainActivity.java app/src/main/java/com/xingyao/card/JsBridge.java app/src/main/java/com/xingyao/card/FaceEnrollmentController.java
-          ! grep -R 'boardAddressLabel\|\.put("boardAddress"' app/src/main/java/com/xingyao/card/core/SlotStateRepository.java
-          grep -q 'DeviceApplicationFacade' app/src/main/java/com/xingyao/card/JsBridge.java
-          grep -q 'DeviceRuntimeRegistry.setUiListener' app/src/main/java/com/xingyao/card/MainActivity.java
-          grep -q 'FaceSearchEngine' app/src/main/java/com/xingyao/card/FaceEnrollmentController.java
-          grep -q 'BackendTransportManager' app/src/main/java/com/xingyao/card/service/DeviceCoreService.java
-          grep -q 'DocumentedBackendService' app/src/main/java/com/xingyao/card/core/DeviceDataLayer.java
+          mkdir -p /tmp/permanent-ci
+          git show origin/fix/device-integration-architecture:.github/workflows/device-integration-ci.yml \
+            > /tmp/permanent-ci/device-integration-ci.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/permanent-ci/device-integration-ci.yml')
+          text = path.read_text(encoding='utf-8')
+          old = "    branches:\n      - main\n"
+          new = "    branches:\n      - main\n      - reference/motone-current\n"
+          if old not in text:
+              raise RuntimeError('permanent CI branch trigger shape changed')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Build H5
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd uniapp
-          npm install --legacy-peer-deps --no-audit --no-fund
-          npm run build:h5
-          test -s dist/build/h5/index.html
-
-      - name: Install generated H5 into Android assets for verification
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf app/src/main/assets/*
-          mkdir -p app/src/main/assets
-          cp -R uniapp/dist/build/h5/. app/src/main/assets/
-          test -s app/src/main/assets/index.html
-
-      - name: Run Android unit tests
-        id: android_tests
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --console=plain --stacktrace > /tmp/android-tests.log 2>&1
-          status=$?
-          echo "status=${status}" >> "$GITHUB_OUTPUT"
-          if [ "$status" -eq 0 ]; then
-            tail -n 40 /tmp/android-tests.log
-          else
-            grep -E -i '(^|[[:space:]])error:|cannot find symbol|incompatible types|method .* cannot be applied|FAILURE:|FAILED|There were failing tests|Compilation failed|Execution failed for task|Exception is:' /tmp/android-tests.log | tail -n 100 || true
-          fi
-          exit 0
-
-      - name: Upload Android test diagnostic
-        if: steps.android_tests.outputs.status != '0'
+      - name: Upload permanent CI
         uses: actions/upload-artifact@v4
         with:
-          name: motone-android-test-diagnostic
-          path: /tmp/android-tests.log
+          name: reference-permanent-ci
+          path: /tmp/permanent-ci/device-integration-ci.yml
           retention-days: 3
-
-      - name: Stop on Android test failure
-        if: steps.android_tests.outputs.status != '0'
-        run: exit 1
-
-      - name: Build debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew :app:assembleDebug --no-daemon --console=plain
-          test -s app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Inspect APK contents
-        shell: bash
-        run: |
-          set -euo pipefail
-          unzip -l app/build/outputs/apk/debug/app-debug.apk > /tmp/apk-files.txt
-          grep -q 'lib/arm64-v8a/libSerialPort.so' /tmp/apk-files.txt
-          grep -q 'lib/armeabi-v7a/libSerialPort.so' /tmp/apk-files.txt
-          grep -q 'assets/index.html' /tmp/apk-files.txt
-          ! grep -qi 'arcsoft' /tmp/apk-files.txt
-
-      - name: Commit verified integration
-        shell: bash
-        env:
-          HEAD_BRANCH: fix/motone-three-layer-integration
-        run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A -- \
-            .gitattributes .gitignore AGENTS.md .agents \
-            app/build.gradle app/src/main/AndroidManifest.xml \
-            app/src/main/java/com/xingyao/card app/src/test/java/com/xingyao/card/core \
-            uniapp/src \
-            docs/CODEX_PROJECT_GUIDE.md docs/COMPLETE_THREE_LAYER_ARCHITECTURE.md \
-            docs/CONTRACT_EVIDENCE_REGISTER.md docs/DEVICE_CONFIGURATION_AND_INTERFACE_AUDIT.md \
-            docs/REFERENCE_MERGE_AUDIT.md docs/REFERENCE_UNUSED_AND_MISSING.md \
-            gradle/wrapper gradlew gradlew.bat
-          git add -f gradle/wrapper/gradle-wrapper.jar
-          if git diff --cached --quiet; then
-            echo 'No integration changes to commit'
-            exit 0
-          fi
-          git commit -m '基于Motone源码整合三层架构与V4.1接口'
-          git push origin HEAD:"${HEAD_BRANCH}"
