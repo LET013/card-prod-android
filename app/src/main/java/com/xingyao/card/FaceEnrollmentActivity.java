@@ -436,8 +436,9 @@ public class FaceEnrollmentActivity extends AppCompatActivity {
             }
 
             // 保存人脸特征到 1:N 搜索库
-            manager.insertFaceFeature(faceId, faceFeature,
-                    faceName != null ? faceName : faceId, "");
+            manager.enrollFeature(faceId,
+                    faceName != null ? faceName : faceId,
+                    faceFeature, "");
 
             // 返回结果
             Intent result = new Intent();

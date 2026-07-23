@@ -22,7 +22,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.UniAppDemo"
         tools:targetApi="31">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -49,5 +49,4 @@
             </intent-filter>
         </receiver>
     </application>
-
 </manifest>

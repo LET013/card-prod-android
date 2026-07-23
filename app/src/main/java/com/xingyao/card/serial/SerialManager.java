@@ -79,18 +79,13 @@ public class SerialManager {
 
     // --- 发送 ---
 
-    public void send(byte[] data) {
+    public void send(byte[] data) throws IOException {
         if (serialPort == null || outputStream == null) {
-            Log.e(TAG, "串口未打开，无法发送数据");
-            return;
+            throw new IOException("串口未打开");
         }
-        try {
-            outputStream.write(data);
-            outputStream.flush();
-            Log.d(TAG, "发送 " + data.length + " 字节");
-        } catch (IOException e) {
-            Log.e(TAG, "串口发送失败", e);
-        }
+        outputStream.write(data);
+        outputStream.flush();
+        Log.d(TAG, "发送 " + data.length + " 字节");
     }
 
     // --- 阻塞读取线程（参考 serial-debug 实现） ---

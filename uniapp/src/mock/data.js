@@ -2,47 +2,71 @@ import { SLOT_STATUS } from '@/constants/app.js'
 
 export const defaultSettings = {
   initialized: false,
-  cabinetNumber: '8652566615555520',
+  cabinetNumber: '',
   serialPort: '/dev/ttyS5',
-  serialExtra: '',
   baudRate: '57600',
-  baudExtra: '',
-  singleGroupCount: 10,
-  totalCount: 100,
-  cardParseMode: '转可见符',
-  singleGroupPollingEnabled: false,
+  serialDataBits: 8,
+  serialStopBits: 1,
+  serialParity: 'NONE',
   serialPollingEnabled: false,
-  deviceId: '336633',
-  serverAddress: 'http://39.107.114.183',
+  serialResponseTimeoutMs: 100,
+  serialCommandGapMs: 200,
+  serialPollingIntervalMs: 5000,
+  slotStatusReportIntervalMs: 10000,
+  pollingMode: '',
+  singleGroupCount: 16,
+  totalCount: 100,
+  cardNumberMode: 'VISIBLE',
+  cardParseMode: '可视卡号',
+
+  deviceId: '',
+  deviceCode: '',
+  activationCode: '',
   backendTransport: 'MQTT',
+
+  httpScheme: '',
+  httpServerAddress: '',
+  httpPort: 8082,
+  httpBasePath: '',
+
+  mqttScheme: '',
+  mqttServerAddress: '',
+  mqttPort: 0,
+
+  tcpServerAddress: '',
   tcpPort: 9009,
-  mqttPort: 1883,
-  mqttBrokerUrl: '',
-  mqttCommandTopic: '',
-  mqttResponseTopic: '',
-  mqttEventTopic: '',
-  httpPort: 8081,
-  faceRecognitionThreshold: 0.7,
-  cameraRotation: 90,
-  codeValueType: '字符',
-  cardSuccessResponseType: '短链接',
-  toastDisplay: '显示',
-  boardUpgradeIntervalMs: 800,
-  ignoreTokenFetch: false,
-  faceRegistrationResponseEnabled: false,
-  tcpDoorCommandResponseEnabled: true,
-  secondaryDoorEnabled: false,
-  usbCardReaderEnabled: false,
+
+  faceRecognitionThreshold: 0.8,
+  faceSyncIncludeFlags: 3,
+  startupDataSyncEnabled: true,
+  cameraRotation: 270,
+  fingerprintEnabled: false,
+  fingerRecognitionThreshold: '',
+  systemBiometricEnabled: true,
+
+  // Unconfirmed/deprecated fields stay blank until the user approves deletion.
+  singleGroupPollingEnabled: false,
+  ignoreTokenFetch: '',
+  codeValueType: '',
+  cardSuccessResponseType: '',
+  toastDisplay: '',
+  boardUpgradeIntervalMs: '',
+  faceRegistrationResponseEnabled: '',
+  tcpDoorCommandResponseEnabled: '',
+  secondaryDoorEnabled: '',
+  usbCardReaderEnabled: '',
   startCharacter: '',
-  endCharacter: ''
+  endCharacter: '',
+  serialExtra: '',
+  baudExtra: ''
 }
 
 export const defaultRuntime = {
-  deviceAuthorization: { state: 'AUTHORIZED', message: '已授权' },
-  recognitionEngine: { state: 'CODE_IN_USE', message: '该激活码已被其他设备使用' },
-  serial: { state: 'DISCONNECTED', message: '原生串口待接入' },
-  socket: { state: 'DISCONNECTED', message: '原生长连接待接入' },
-  http: { state: 'DISABLED', message: '当前阶段未接入HTTP' }
+  deviceAuthorization: { state: 'PENDING', message: '等待后端授权状态' },
+  recognitionEngine: { state: 'STOPPED', message: '识别引擎尚未启动' },
+  serial: { state: 'DISCONNECTED', message: '串口未连接' },
+  socket: { state: 'DISCONNECTED', message: '后端通信未连接' },
+  http: { state: 'PENDING', message: '等待HTTP注册/激活' }
 }
 
 const seededStatus = {
@@ -55,7 +79,7 @@ const seededStatus = {
   51: SLOT_STATUS.ILLEGAL_CARD
 }
 
-export function createSlots(total = 100, groupSize = 10) {
+export function createSlots(total = 100, groupSize = 16) {
   return Array.from({ length: total }, (_, index) => {
     const slotNumber = index + 1
     const status = seededStatus[slotNumber] || SLOT_STATUS.EMPTY
@@ -65,7 +89,7 @@ export function createSlots(total = 100, groupSize = 10) {
       slotNumber,
       displayNumber: String(slotNumber).padStart(2, '0'),
       groupNumber: Math.ceil(slotNumber / groupSize),
-      boardAddress: `BOARD-${String(Math.ceil(slotNumber / groupSize)).padStart(2, '0')}`,
+      boardAddress: slotNumber,
       cardNumber: status === SLOT_STATUS.EMPTY ? '' : `CARD${String(100000 + slotNumber)}`,
       status,
       presenceStatus: status === SLOT_STATUS.EMPTY ? '无卡' : '有卡',
@@ -82,17 +106,13 @@ export function createSlots(total = 100, groupSize = 10) {
 }
 
 export const defaultEmployees = [
-  { id: 'EMP-001', employeeId: 'LDOGIK_7855422222', employeeCode: 'logjf125', employeeName: 'ruotji', avatarUrl: '/static/avatars/employee-1.jpg', faceRegistered: true, fingerprintRegistered: true, enabled: true, deviceIds: ['336633'] },
-  { id: 'EMP-002', employeeId: 'EMP_20260002', employeeCode: 'xy202602', employeeName: '林清', avatarUrl: '/static/avatars/employee-2.jpg', faceRegistered: true, fingerprintRegistered: false, enabled: true, deviceIds: ['336633'] },
-  { id: 'EMP-003', employeeId: 'EMP_20260003', employeeCode: 'xy202603', employeeName: '周宁', avatarUrl: '/static/avatars/employee-3.jpg', faceRegistered: false, fingerprintRegistered: true, enabled: true, deviceIds: ['336633'] },
-  { id: 'EMP-004', employeeId: 'EMP_20260004', employeeCode: 'xy202604', employeeName: '沈月', avatarUrl: '/static/avatars/employee-4.jpg', faceRegistered: true, fingerprintRegistered: true, enabled: true, deviceIds: ['336633'] }
+  { id: 'EMP-001', employeeId: 'LDOGIK_7855422222', employeeCode: 'logjf125', employeeName: 'ruotji', avatarUrl: '/static/avatars/employee-1.jpg', faceRegistered: true, fingerprintRegistered: false, enabled: true, deviceIds: ['DEV-DEMO'] },
+  { id: 'EMP-002', employeeId: 'EMP_20260002', employeeCode: 'xy202602', employeeName: '林清', avatarUrl: '/static/avatars/employee-2.jpg', faceRegistered: true, fingerprintRegistered: false, enabled: true, deviceIds: ['DEV-DEMO'] }
 ]
 
 export const defaultHistory = [
   { id: 'H-001', type: '取卡', employeeName: 'ruotji', slotNumber: 4, result: '成功', createdAt: '2026-07-01 16:20:15' },
-  { id: 'H-002', type: '管理员开门', employeeName: '运维人员', slotNumber: 11, result: '成功', createdAt: '2026-07-01 15:43:09' },
-  { id: 'H-003', type: '还卡', employeeName: '林清', slotNumber: 21, result: '成功', createdAt: '2026-07-01 14:18:42' },
-  { id: 'H-004', type: '取卡', employeeName: '周宁', slotNumber: 37, result: '识别失败', createdAt: '2026-07-01 10:02:31' }
+  { id: 'H-002', type: '管理员开门', employeeName: '运维人员', slotNumber: 11, result: '成功', createdAt: '2026-07-01 15:43:09' }
 ]
 
 export const upgradeFiles = [

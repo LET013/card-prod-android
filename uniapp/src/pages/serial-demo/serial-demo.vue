@@ -16,6 +16,16 @@
           <text>TX {{ serialStatus.sentBytes || 0 }} bytes</text>
           <text>RX {{ serialStatus.receivedBytes || 0 }} bytes</text>
         </view>
+        <view class="backend-line" :class="backendStatusClass">
+          <view class="backend-copy">
+            <text class="backend-title">后端通信状态</text>
+            <text class="backend-subtitle">{{ backendMode }} · {{ backendTarget }}</text>
+          </view>
+          <view class="backend-state">
+            <text>{{ backendStatus.state || 'UNKNOWN' }}</text>
+            <text>{{ backendStatus.message || '等待后端通信状态' }}</text>
+          </view>
+        </view>
         <view v-if="serialStatus.permissionHint" class="hint-line">{{ serialStatus.permissionHint }}</view>
 
         <view class="console-layout">
@@ -112,12 +122,24 @@ const FUNCTION_VERSION = 0x53
 const roleLabel = computed(() => ROLE_META[appState.session?.role]?.label || '')
 const bridgeLabel = computed(() => nativeBridge.isAvailable() ? 'Android Bridge 已连接' : '浏览器 Mock 模式')
 const serialStatus = reactive({ ...appState.runtime.serial })
+const backendStatus = reactive({ ...appState.runtime.socket })
 const statusClass = computed(() => {
   if (serialStatus.state === 'CONNECTED') return 'connected'
   if (serialStatus.state === 'CONNECTING') return 'connecting'
   return 'disconnected'
 })
+const backendStatusClass = computed(() => {
+  if (backendStatus.state === 'AUTHENTICATED') return 'connected'
+  if (['CONNECTING', 'TRANSPORT_CONNECTED', 'SUBSCRIBED', 'LOGIN_SENT'].includes(backendStatus.state)) return 'connecting'
+  return 'disconnected'
+})
+const backendMode = computed(() => String(appState.settings.backendTransport || 'MQTT').toUpperCase())
+const backendTarget = computed(() => {
+  if (backendMode.value === 'TCP') return `${appState.settings.serverAddress || '-'}:${appState.settings.tcpPort || '-'}`
+  return appState.settings.mqttBrokerUrl || `${appState.settings.serverAddress || '-'}:${appState.settings.mqttPort || '-'}`
+})
 const totalSlots = computed(() => Number(serialStatus.totalSlots || appState.settings.totalCount || 100))
+const serialAddressLimit = computed(() => Number(serialStatus.pollingAddressLimit || serialStatus.singleGroupCount || appState.settings.singleGroupCount || totalSlots.value))
 
 const slotNumber = ref('1')
 const portInput = ref(appState.settings.serialPort || '')
@@ -141,6 +163,19 @@ onMounted(async () => {
     addLog('STATUS', `${event.state || ''} ${event.message || ''}`.trim())
     if (event.permissionHint) addLog('HINT', event.permissionHint)
   }))
+  unsubs.push(nativeBridge.on('socket.statusChanged', (event) => {
+    if (!event) return
+    Object.assign(backendStatus, event)
+    addLog('BACKEND', `${event.state || ''} ${event.message || ''}`.trim())
+  }))
+  unsubs.push(nativeBridge.on('sync.statusChanged', (event) => {
+    if (!event) return
+    addLog('SYNC', `${event.state || ''} ${event.message || ''}`.trim())
+  }))
+  unsubs.push(nativeBridge.on('sync.completed', (event) => {
+    if (!event) return
+    addLog('SYNC', `completed employees=${event.employeeCount || 0} faces=${event.faceCount || 0} fingers=${event.fingerCount || 0}`)
+  }))
   unsubs.push(nativeBridge.on('serial.dataReceived', (event) => addSerialEvent(event)))
   unsubs.push(nativeBridge.on('cabinet.slotStatus', (event) => {
     if (!event) return
@@ -161,10 +196,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => unsubs.forEach((off) => off?.()))
 
-const takeCard = () => runAction(() => sendProtocolCommand('取指定卡', currentSlot(), FUNCTION_OPEN_DOOR, [0x01]))
-const returnCard = () => runAction(() => sendProtocolCommand('还卡开门', currentSlot(), FUNCTION_OPEN_DOOR, [0x02]))
-const readSlotStatus = () => runAction(() => sendProtocolCommand('读取卡状态', currentSlot(), FUNCTION_QUERY, [0x01]))
-const readBoardVersion = () => runAction(() => sendProtocolCommand('读取版本', currentSlot(), FUNCTION_VERSION, [0x01]))
+const takeCard = () => runAction(() => openSlotWithNative('取指定卡', currentSlot(), services.takeCard))
+const returnCard = () => runAction(() => openSlotWithNative('还卡开门', currentSlot(), services.returnCard))
+const readSlotStatus = () => runAction(() => protocolCommandWithNative('读取卡状态', currentSlot(), FUNCTION_QUERY, [0x01], services.querySlot))
+const readBoardVersion = () => runAction(() => protocolCommandWithNative('读取版本', currentSlot(), FUNCTION_VERSION, [0x01], services.readBoardVersion))
 
 const scanSerialPorts = async () => {
   scanning.value = true
@@ -225,26 +260,47 @@ const toggleSerialPolling = async () => {
 const confirmEjectAll = () => {
   uni.showModal({
     title: '一键弹出所有卡',
-    content: `将向 1-${totalSlots.value} 号卡槽连续写入管理员开门命令，确认执行？`,
+    content: `将按单组数量向 1-${serialAddressLimit.value} 号单板地址连续写入管理员开门命令，配置总卡槽 ${totalSlots.value}，确认执行？`,
     success: (result) => { if (result.confirm) ejectAllCards() }
   })
 }
 
 const ejectAllCards = async () => {
-  const count = totalSlots.value
+  const count = serialAddressLimit.value
   busy.value = true
-  addLog('CMD', `一键弹出所有卡 start total=${count}`)
+  addLog('CMD', `一键弹出所有卡 start boardAddresses=${count} totalSlots=${totalSlots.value}`)
   try {
-    for (let address = 1; address <= count; address++) {
-      await writeHex(`一键弹出 slot=${address}`, buildCommandHex(address, FUNCTION_OPEN_DOOR, [0x02]))
-    }
-    addLog('DONE', `一键弹出所有卡 done total=${count}`)
+    const result = await services.unlockAllDoors()
+    addLog('DONE', `一键弹出所有卡 done success=${result.successCount || 0} failed=${result.failedCount || 0}`)
     await refreshStatus()
   } catch (error) {
     addLog('ERROR', `一键弹出中断 ${error.message || '未知错误'}`)
   } finally {
     busy.value = false
   }
+}
+
+const openSlotWithNative = async (label, address, action) => {
+  const control = label.includes('取') ? 0x01 : 0x02
+  const boardAddress = boardAddressForSlot(address)
+  const hex = buildCommandHex(boardAddress, FUNCTION_OPEN_DOOR, [control])
+  encoding.value = 'HEX'
+  command.value = hex
+  addLog('CMD', `${label} slot=${address} board=${boardAddress} -> ${formatHex(hex)}`)
+  const result = await action(address)
+  addLog('WRITE', `${label} slot=${address} ${result.ack ? 'ack' : 'sent'} bytes=${result.bytes || 0} hex=${result.hex || normalizeHex(hex)}`)
+  await refreshStatus()
+}
+
+const protocolCommandWithNative = async (label, address, functionCode, data, action) => {
+  const boardAddress = boardAddressForSlot(address)
+  const hex = buildCommandHex(boardAddress, functionCode, data)
+  encoding.value = 'HEX'
+  command.value = hex
+  addLog('CMD', `${label} slot=${address} board=${boardAddress} -> ${formatHex(hex)}`)
+  const result = await action(address)
+  addLog('WRITE', `${label} slot=${address} ${result.ack ? 'ack' : 'sent'} bytes=${result.bytes || 0} hex=${result.hex || normalizeHex(hex)}`)
+  await refreshStatus()
 }
 
 const sendProtocolCommand = async (label, address, functionCode, data) => {
@@ -316,10 +372,13 @@ const writeText = async (label, value) => {
 
 const refreshStatus = async () => {
   try {
-    Object.assign(serialStatus, await services.getSerialStatus())
+    const runtime = await services.getRuntime()
+    Object.assign(serialStatus, runtime?.serial || await services.getSerialStatus())
+    Object.assign(backendStatus, runtime?.socket || {})
     if (!portInput.value) portInput.value = serialStatus.port || appState.settings.serialPort || ''
     if (!baudInput.value) baudInput.value = String(serialStatus.baudRate || appState.settings.baudRate || '57600')
     addLog('STATUS', `${serialStatus.state || ''} ${serialStatus.message || ''}`.trim())
+    addLog('BACKEND', `${backendStatus.state || ''} ${backendStatus.message || ''}`.trim())
     if (serialStatus.permissionHint) addLog('HINT', serialStatus.permissionHint)
   } catch (error) {
     addLog('ERROR', `读取状态失败 ${error.message || '未知错误'}`)
@@ -375,6 +434,12 @@ function currentSlot() {
     throw new Error(`卡槽号必须在 1-${totalSlots.value} 之间`)
   }
   return value
+}
+
+function boardAddressForSlot(slot) {
+  const groupSize = Number(serialAddressLimit.value) || Number(totalSlots.value) || 1
+  if (groupSize >= totalSlots.value) return slot
+  return ((slot - 1) % groupSize) + 1
 }
 
 function buildCommandHex(address, functionCode, data) {
@@ -443,6 +508,15 @@ function toHexByte(value) {
 .status-pill.disconnected { background: #d53d4b; }
 .status-line { min-height: 42px; margin-top: 8px; border: 1px solid #d9e2ec; background: #fff; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; gap: 14px; color: #36475c; font-size: 13px; overflow-wrap: anywhere; box-sizing: border-box; }
 .status-line text:first-child { flex: 1; min-width: 0; }
+.backend-line { min-height: 58px; margin-top: 8px; border: 1px solid #d9e2ec; background: #fff; border-left: 5px solid #d53d4b; border-radius: 8px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; box-sizing: border-box; }
+.backend-line.connected { border-left-color: #0f9f5b; }
+.backend-line.connecting { border-left-color: #d18413; }
+.backend-copy, .backend-state { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.backend-title { color: #172337; font-size: 14px; font-weight: 700; }
+.backend-subtitle { color: #627086; font-size: 12px; font-family: monospace; overflow-wrap: anywhere; }
+.backend-state { align-items: flex-end; text-align: right; max-width: 58%; }
+.backend-state text:first-child { color: #172337; font-size: 13px; font-weight: 800; }
+.backend-state text:last-child { color: #53657c; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
 .hint-line { margin-top: 8px; border: 1px solid #f2c5cb; background: #fff4f5; color: #9a2634; border-radius: 8px; padding: 10px 12px; box-sizing: border-box; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .console-layout { display: grid; grid-template-columns: minmax(300px, 380px) minmax(420px, 1fr); gap: 12px; margin-top: 12px; }
 .control-panel, .terminal-panel { min-width: 0; background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 14px; box-sizing: border-box; }
@@ -497,6 +571,8 @@ button[disabled] { opacity: .62; }
 @media (max-width: 820px) {
   .top-bar { align-items: flex-start; flex-direction: column; }
   .status-line { align-items: flex-start; flex-direction: column; }
+  .backend-line { align-items: flex-start; flex-direction: column; }
+  .backend-state { align-items: flex-start; text-align: left; max-width: none; }
   .console-layout { grid-template-columns: 1fr; }
   .terminal { height: 420px; }
   .terminal-row { grid-template-columns: 70px 54px minmax(0, 1fr); }

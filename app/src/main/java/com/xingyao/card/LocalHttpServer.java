@@ -107,6 +107,11 @@ public class LocalHttpServer {
                 return;
             }
 
+            if (uri.equals("/favicon.ico")) {
+                sendResponse(out, 204, "No Content", "image/x-icon", new byte[0]);
+                return;
+            }
+
             if (uri.equals("/") || uri.equals("/index.html")) {
                 uri = "/index.html";
             }
@@ -117,7 +122,12 @@ public class LocalHttpServer {
                 byte[] data = readFully(assetStream);
                 sendResponse(out, 200, "OK", mimeType, data);
             } catch (IOException e) {
-                Log.d(TAG, "File not found: " + uri);
+                if (isFrontendRoute(uri)) {
+                    InputStream assetStream = context.getAssets().open("index.html");
+                    sendResponse(out, 200, "OK", "text/html", readFully(assetStream));
+                    return;
+                }
+                Log.e(TAG, "File not found: " + uri, e);
                 sendResponse(out, 404, "Not Found", "text/plain", "File not found: " + uri);
             }
 
@@ -190,6 +200,13 @@ public class LocalHttpServer {
             return "image/webp";
         }
         return "application/octet-stream";
+    }
+
+    private boolean isFrontendRoute(String uri) {
+        if (uri == null || uri.isEmpty()) return false;
+        String clean = uri.split("\\?", 2)[0].split("#", 2)[0];
+        String name = clean.substring(clean.lastIndexOf('/') + 1);
+        return !name.contains(".") || clean.startsWith("/pages/");
     }
 
     private static class ByteArrayOutputStream {

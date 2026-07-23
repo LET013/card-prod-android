@@ -41,18 +41,23 @@ public final class DeviceEventLogRepository {
         return new JSONArray(preferences.getString(KEY_EVENTS, "[]"));
     }
 
-    public synchronized void removeThrough(String eventId) throws JSONException {
+    public synchronized boolean removeThrough(String eventId) throws JSONException {
         JSONArray events = pendingEvents();
-        JSONArray remaining = new JSONArray();
-        boolean acknowledged = false;
+        int matchedIndex = -1;
         for (int index = 0; index < events.length(); index++) {
-            JSONObject item = events.getJSONObject(index);
-            if (!acknowledged) {
-                acknowledged = eventId.equals(item.optString("eventId"));
-                continue;
+            if (eventId != null && eventId.equals(events.getJSONObject(index).optString("eventId"))) {
+                matchedIndex = index;
+                break;
             }
-            remaining.put(item);
         }
-        preferences.edit().putString(KEY_EVENTS, remaining.toString()).apply();
+        if (matchedIndex < 0) return false;
+        JSONArray remaining = new JSONArray();
+        for (int index = matchedIndex + 1; index < events.length(); index++) {
+            remaining.put(events.getJSONObject(index));
+        }
+        if (!preferences.edit().putString(KEY_EVENTS, remaining.toString()).commit()) {
+            throw new IllegalStateException("无法提交诊断事件ACK");
+        }
+        return true;
     }
 }

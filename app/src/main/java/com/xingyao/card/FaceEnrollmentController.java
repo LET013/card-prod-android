@@ -17,13 +17,14 @@ import androidx.camera.core.ExperimentalGetImage;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 
+import com.xingyao.card.core.DeviceRuntimeRegistry;
+
 import com.ai.face.base.addFace.AddFaceCallBack;
 import com.ai.face.base.addFace.AddFaceDispose;
 import com.ai.face.faceSearch.search.FaceSearchEngine;
 import com.ai.face.faceSearch.search.SearchProcessBuilder;
 import com.ai.face.faceSearch.search.SearchProcessCallBack;
 import com.ai.face.faceSearch.utils.FaceSearchResult;
-import com.xingyao.card.core.FaceAiManager;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -262,9 +263,7 @@ public class FaceEnrollmentController {
         });
 
         try {
-            FaceAiManager manager = FaceAiManager.getInstance();
-
-            String faceFeature = manager.extractFaceFeature(croppedBitmap);
+            String faceFeature = DeviceRuntimeRegistry.require().extractFaceFeature(croppedBitmap);
             if (faceFeature == null || faceFeature.isEmpty()) {
                 timeoutHandler.post(() -> {
                     Toast.makeText(activity, "特征提取失败,请重试", Toast.LENGTH_SHORT).show();
@@ -272,9 +271,6 @@ public class FaceEnrollmentController {
                 });
                 return;
             }
-
-            manager.insertFaceFeature(faceId, faceFeature,
-                    faceName != null ? faceName : faceId, "");
 
             Log.i(TAG, "Face enrolled: id=" + faceId + ", score=" + silentLiveScore);
 
@@ -311,9 +307,14 @@ public class FaceEnrollmentController {
         }
     }
 
+    private float configuredFaceThreshold() {
+        try { return DeviceRuntimeRegistry.require().faceRecognitionThreshold(); }
+        catch (Exception ignored) { return 0.8f; }
+    }
+
     private void initFaceSearch() {
         SearchProcessBuilder builder = new SearchProcessBuilder.Builder(activity)
-                .setThreshold(0.85f)
+                .setThreshold(configuredFaceThreshold())
                 .setNeedFaceLiveness(false)
                 .setSearchType(SearchProcessBuilder.SearchType.N_SEARCH_1)
                 .setCallBackAllMatch(false)

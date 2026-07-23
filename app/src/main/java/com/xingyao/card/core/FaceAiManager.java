@@ -2,129 +2,178 @@ package com.xingyao.card.core;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 
 import com.ai.face.core.engine.FaceAISDKEngine;
 import com.ai.face.faceSearch.search.FaceSearchFeature;
 import com.ai.face.faceSearch.search.FaceSearchFeatureManger;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.List;
 
-/**
- * FaceAISDK 管理器 - 封装 FaceAISDK (com.ai.face.*) 的初始化和人脸库操作.
- *
- * CameraX + 人脸检测/搜索由 FaceEnrollmentController 直接负责.
- * 本类仅管理:
- *   - 引擎生命周期 (initialize, release)
- *   - 人脸库 CRUD (insert, delete, list, count)
- *   - 特征向量转换 (bitmap → feature string)
- */
-public class FaceAiManager {
+/** FaceAISDK platform adapter. Business state remains in DeviceDataLayer/DeviceDataRepository. */
+public final class FaceAiManager {
+    public interface Listener { void onStatusChanged(JSONObject status); }
 
     private static volatile FaceAiManager instance;
     private Context appContext;
-    private boolean initialized = false;
+    private Listener listener;
+    private volatile boolean initialized;
+    private volatile String state = "STOPPED";
+    private volatile String message = "FaceAISDK尚未启动";
 
-    private FaceAiManager() {}
+    private FaceAiManager() { }
 
     public static FaceAiManager getInstance() {
         if (instance == null) {
             synchronized (FaceAiManager.class) {
-                if (instance == null) {
-                    instance = new FaceAiManager();
-                }
+                if (instance == null) instance = new FaceAiManager();
             }
         }
         return instance;
     }
 
-    /**
-     * 初始化 SDK 引擎. 应在 Application.onCreate 或首次使用前调用.
-     */
-    public void init(Context context) {
-        if (initialized) return;
-        this.appContext = context.getApplicationContext();
-        // 触发引擎初始化 (内部会加载 TF Lite 模型和 bin 文件)
-        FaceAISDKEngine.getInstance(appContext);
-        initialized = true;
-    }
-
-    public boolean isInitialized() {
-        return initialized;
-    }
-
-    /**
-     * 释放引擎资源.
-     */
-    public void release() {
+    public synchronized void init(Context context, Listener listener) {
+        if (context == null) throw new IllegalArgumentException("context is required");
+        appContext = context.getApplicationContext();
+        this.listener = listener;
         if (initialized) {
-            FaceAISDKEngine.getInstance(appContext).release();
+            update("READY", "FaceAISDK已就绪");
+            return;
+        }
+        try {
+            FaceAISDKEngine.getInstance(appContext);
+            FaceSearchFeatureManger.getInstance(appContext);
+            initialized = true;
+            update("READY", "FaceAISDK已初始化");
+        } catch (Throwable error) {
             initialized = false;
+            update("ERROR", "FaceAISDK初始化失败：" + safeMessage(error));
+            throw new IllegalStateException("FaceAISDK初始化失败：" + safeMessage(error), error);
         }
     }
 
-    // ==================== 人脸库 CRUD ====================
-
-    /**
-     * 向人脸库插入人脸特征 (用于 1:N 搜索).
-     *
-     * @param faceID   用户唯一标识 (如员工ID)
-     * @param feature  人脸特征字符串 (Base64 编码的 1024 维向量)
-     * @param tag      标签 (可选)
-     * @param group    分组 (可选)
-     */
-    public void insertFaceFeature(String faceID, String feature, String tag, String group) {
-        FaceSearchFeatureManger.getInstance(appContext)
-                .insertFaceFeature(faceID, feature, System.currentTimeMillis(), tag, group);
+    public synchronized void start() {
+        if (!initialized) {
+            if (appContext == null) throw new IllegalStateException("FaceAISDK尚未配置Context");
+            init(appContext, listener);
+        }
     }
 
-    /**
-     * 删除指定 faceID 的人脸.
-     */
-    public void deleteFaceFeature(String faceID) {
-        FaceSearchFeatureManger.getInstance(appContext).deleteFaceFaceFeature(faceID);
+    public synchronized void stop() {
+        release();
     }
 
-    /**
-     * 清空所有人脸.
-     */
-    public void clearAllFaces() {
-        FaceSearchFeatureManger.getInstance(appContext).clearAllFaceFaceFeature();
+    public synchronized void restart() {
+        if (appContext == null) throw new IllegalStateException("FaceAISDK尚未配置Context");
+        release();
+        init(appContext, listener);
     }
 
-    /**
-     * 获取已注册的人脸数量.
-     */
-    public int getFaceCount() {
+    public synchronized void release() {
+        if (initialized && appContext != null) {
+            try { FaceAISDKEngine.getInstance(appContext).release(); }
+            catch (Throwable ignored) { }
+        }
+        initialized = false;
+        update("STOPPED", "FaceAISDK已停止");
+    }
+
+    public synchronized boolean isInitialized() { return initialized; }
+
+    public synchronized void awaitReady(long timeoutMs) {
+        if (!initialized) throw new IllegalStateException(message);
+    }
+
+    public synchronized JSONObject snapshot() throws JSONException {
+        return new JSONObject().put("state", state).put("message", message)
+                .put("engine", "FaceAISDK")
+                .put("templateCount", initialized ? getFaceCount() : 0);
+    }
+
+    public synchronized String extractFaceFeature(Bitmap croppedFaceBitmap) {
+        ensureReady();
+        if (croppedFaceBitmap == null) throw new IllegalArgumentException("人脸Bitmap不能为空");
+        String feature = FaceAISDKEngine.getInstance(appContext).croppedBitmap2Feature(croppedFaceBitmap);
+        if (feature == null || feature.trim().isEmpty()) throw new IllegalStateException("FaceAISDK未提取到人脸特征");
+        return feature;
+    }
+
+    public synchronized JSONObject enrollFeature(String employeeId, String employeeName,
+                                                  String faceFeature, String sourceUrl)
+            throws JSONException {
+        ensureReady();
+        String id = required(employeeId, "employeeId");
+        String feature = required(faceFeature, "faceFeature");
+        FaceSearchFeatureManger.getInstance(appContext).insertFaceFeature(
+                id, feature, System.currentTimeMillis(),
+                employeeName == null ? "" : employeeName, "");
+        return new JSONObject().put("success", true).put("employeeId", id)
+                .put("employeeName", employeeName == null ? "" : employeeName)
+                .put("sourceUrl", sourceUrl == null ? "" : sourceUrl);
+    }
+
+    public synchronized JSONObject enrollImage(String employeeId, String employeeName,
+                                                byte[] imageBytes, String sourceUrl)
+            throws JSONException {
+        ensureReady();
+        if (imageBytes == null || imageBytes.length == 0) throw new IllegalArgumentException("人脸图片为空");
+        Bitmap bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
+        if (bitmap == null) throw new IllegalArgumentException("人脸图片无法解码");
+        String feature;
+        try { feature = extractFaceFeature(bitmap); }
+        finally { bitmap.recycle(); }
+        return enrollFeature(employeeId, employeeName, feature, sourceUrl);
+    }
+
+    public synchronized boolean deleteTemplate(String employeeId) {
+        ensureReady();
+        String id = required(employeeId, "employeeId");
+        FaceSearchFeatureManger.getInstance(appContext).deleteFaceFaceFeature(id);
+        return true;
+    }
+
+    public synchronized int getFaceCount() {
+        ensureReady();
         return FaceSearchFeatureManger.getInstance(appContext).getFaceSearchLibCount();
     }
 
-    /**
-     * 查询所有人脸.
-     */
-    public List<FaceSearchFeature> listAllFaces() {
+    public synchronized List<FaceSearchFeature> listAllFaces() {
+        ensureReady();
         return FaceSearchFeatureManger.getInstance(appContext).queryAllFaceFaceFeature();
     }
 
-    /**
-     * 根据 faceID 查询人脸特征.
-     */
-    public FaceSearchFeature queryFaceByID(String faceID) {
-        return FaceSearchFeatureManger.getInstance(appContext).queryFaceFeatureByID(faceID);
+    public synchronized JSONObject templateSummary() throws JSONException {
+        return new JSONObject().put("templateCount", initialized ? getFaceCount() : 0)
+                .put("employeeIds", new JSONArray());
     }
 
-    // ==================== 特征转换 ====================
-
-    /**
-     * 从裁剪后的人脸 Bitmap 提取 1024 维特征 (Base64 字符串).
-     */
-    public String extractFaceFeature(Bitmap croppedFaceBitmap) {
-        return FaceAISDKEngine.getInstance(appContext).croppedBitmap2Feature(croppedFaceBitmap);
+    private void ensureReady() {
+        if (!initialized || appContext == null) throw new IllegalStateException(message);
     }
 
-    /**
-     * 保存裁剪后的人脸图片到本地.
-     */
-    public void saveFaceImage(Bitmap croppedFaceBitmap, String faceID, String dirPath) {
-        FaceAISDKEngine.getInstance(appContext).saveCroppedFaceImage(croppedFaceBitmap, faceID, dirPath);
+    private void update(String nextState, String nextMessage) {
+        state = nextState;
+        message = nextMessage;
+        Listener current = listener;
+        if (current != null) {
+            try { current.onStatusChanged(snapshot()); }
+            catch (Exception ignored) { }
+        }
+    }
+
+    private static String required(String value, String field) {
+        String result = value == null ? "" : value.trim();
+        if (result.isEmpty()) throw new IllegalArgumentException(field + " is required");
+        return result;
+    }
+
+    private static String safeMessage(Throwable error) {
+        if (error == null) return "unknown";
+        String value = error.getMessage();
+        return value == null || value.trim().isEmpty() ? error.getClass().getSimpleName() : value;
     }
 }

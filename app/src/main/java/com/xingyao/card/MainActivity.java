@@ -1,5 +1,6 @@
 package com.xingyao.card;
 
+import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.fingerprint.FingerprintManager;
@@ -27,7 +28,9 @@ import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
+import androidx.core.app.ActivityCompat;
 
+import com.xingyao.card.core.DeviceRuntimeRegistry;
 import com.xingyao.card.service.DeviceCoreService;
 import com.ai.face.faceSearch.search.FaceSearchEngine;
 import com.ai.face.core.engine.FaceAISDKEngine;
@@ -41,6 +44,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCAL_HTTP_PORT = 8088;
+    private static final int REQUEST_CAMERA = 4201;
     private static boolean sClassesPrewarmed = false;
 
     private WebViewManager webViewManager;
@@ -81,12 +85,18 @@ public class MainActivity extends AppCompatActivity {
         mCameraPreviewView = findViewById(R.id.camera_preview);
         Log.d(TAG, "onCreate startDeviceCoreService...");
         startDeviceCoreService();
-        DeviceCoreService.setDeviceEventListener(this::sendBridgeEvent);
+        DeviceRuntimeRegistry.setUiListener(this::sendBridgeEvent);
         initViews();
         Log.d(TAG, "onCreate initManagers...");
         initManagers();
         Log.d(TAG, "onCreate prewarmCameraX...");
-        prewarmCameraX();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            prewarmCameraX();
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
+        }
         Log.d(TAG, "onCreate prewarmFaceAI...");
         prewarmFaceAI();
         Log.d(TAG, "onCreate startLocalHttpServer...");
@@ -334,6 +344,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CAMERA && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            prewarmCameraX();
+        }
     }
 
     private void initViews() {
@@ -387,7 +401,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadUniApp() {
-        webViewManager.loadUrl("http://localhost:" + LOCAL_HTTP_PORT + "/index.html");
+        webViewManager.loadUrl("http://127.0.0.1:" + LOCAL_HTTP_PORT + "/index.html");
+    }
+
+    public boolean isOriginScopedBridgeEnabled() {
+        return webViewManager != null && webViewManager.isOriginScopedBridgeEnabled();
     }
 
     public void sendBridgeResponse(JSONObject response) {
@@ -459,19 +477,12 @@ public class MainActivity extends AppCompatActivity {
                 hideFaceOverlay();
                 if (reqId == null) return;
                 try {
-                    JSONObject data = new JSONObject()
-                            .put("code", 1)
-                            .put("msg", "操作成功")
-                            .put("faceID", faceId != null ? faceId : "")
-                            .put("similarity", score);
-                    if (faceFeature != null) data.put("faceFeature", faceFeature);
-                    sendBridgeResponse(new JSONObject()
-                            .put("type", "response")
-                            .put("requestId", reqId)
-                            .put("success", true)
-                            .put("data", data));
-                } catch (JSONException e) {
-                    sendBridgeError(reqId, "FACE_FAILED", e.getMessage());
+                    JSONObject data = DeviceRuntimeRegistry.require()
+                            .completeFaceEnrollment(faceId, "", faceFeature, score);
+                    sendBridgeResponse(new JSONObject().put("type", "response")
+                            .put("requestId", reqId).put("success", true).put("data", data));
+                } catch (Exception error) {
+                    sendBridgeError(reqId, "FACE_ENROLLMENT_FAILED", safeMessage(error));
                 }
             }
 
@@ -481,18 +492,12 @@ public class MainActivity extends AppCompatActivity {
                 hideFaceOverlay();
                 if (reqId == null) return;
                 try {
-                    JSONObject data = new JSONObject()
-                            .put("code", 1)
-                            .put("msg", "操作成功")
-                            .put("faceID", faceId != null ? faceId : "")
-                            .put("similarity", score);
-                    sendBridgeResponse(new JSONObject()
-                            .put("type", "response")
-                            .put("requestId", reqId)
-                            .put("success", true)
-                            .put("data", data));
-                } catch (JSONException e) {
-                    sendBridgeError(reqId, "FACE_FAILED", e.getMessage());
+                    JSONObject data = DeviceRuntimeRegistry.require()
+                            .completeFaceVerification(faceId, score);
+                    sendBridgeResponse(new JSONObject().put("type", "response")
+                            .put("requestId", reqId).put("success", true).put("data", data));
+                } catch (Exception error) {
+                    sendBridgeError(reqId, "FACE_VERIFICATION_FAILED", safeMessage(error));
                 }
             }
 
@@ -685,7 +690,9 @@ public class MainActivity extends AppCompatActivity {
                     .put("employeeName", employeeName)
                     .put("deviceBound", true)
                     .put("message", enrollment ? "本机系统指纹授权成功" : "系统指纹验证成功");
-            DeviceCoreService.recordOperation("biometric.fingerprint." + operation.toLowerCase(), response);
+            DeviceRuntimeRegistry.record("biometric.fingerprint." + operation.toLowerCase(), response);
+            if (enrollment) DeviceRuntimeRegistry.require()
+                    .markFingerprintAuthorized(employeeId, employeeName);
             sendFingerprintEvent("SUCCESS", response.optString("message"), operation, 0);
             sendBridgeResponse(new JSONObject().put("type", "response").put("requestId", completedRequestId)
                     .put("success", true).put("data", response));
@@ -714,6 +721,13 @@ public class MainActivity extends AppCompatActivity {
         } catch (JSONException error) {
             Log.e("MainActivity", "Unable to send fingerprint event", error);
         }
+    }
+
+    private static String safeMessage(Throwable error) {
+        if (error == null) return "unknown";
+        String value = error.getMessage();
+        return value == null || value.trim().isEmpty()
+                ? error.getClass().getSimpleName() : value;
     }
 
     private static String fingerprintAvailabilityMessage(int availability) {
@@ -755,9 +769,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        DeviceCoreService.setDeviceEventListener(null);
+        DeviceRuntimeRegistry.setUiListener(null);
+        if (faceController != null) faceController.stop();
+        if (mCameraProvider != null) mCameraProvider.unbindAll();
         stopLocalHttpServer();
         if (webViewManager != null) webViewManager.destroy();
+        if (jsBridge != null) jsBridge.close();
         super.onDestroy();
     }
 }

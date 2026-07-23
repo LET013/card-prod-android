@@ -1,15 +1,10 @@
 package com.xingyao.card.core;
 
-import android.util.Log;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Protocol V1.5 for the Android host and work-card unit boards.
- * Frame: DD CC [length 2B] [master 1B] [slave 1B] [func 1B] [data N B] [CRC 2B]
- */
+/** Protocol V1.5 for the Android host and work-card unit boards. */
 public final class WorkCardProtocol {
     public static final int FUNCTION_QUERY = 0x01;
     public static final int FUNCTION_OPEN_DOOR = 0x51;
@@ -23,7 +18,7 @@ public final class WorkCardProtocol {
     private WorkCardProtocol() { }
 
     public static byte[] query(int address) {
-        return frame(address, FUNCTION_QUERY, concat(FIXED_PREFIX, new byte[]{0x00,0x00,0x00,0x00}));
+        return frame(address, FUNCTION_QUERY, concat(FIXED_PREFIX, new byte[]{0x01}));
     }
 
     public static byte[] openDoor(int address, boolean administrator) {
@@ -52,10 +47,8 @@ public final class WorkCardProtocol {
         frame[6] = (byte) function;
         System.arraycopy(data, 0, frame, 7, data.length);
         int crc = crc16Modbus(frame, 0, frame.length - 2);
-        // CRC 低字节在前
-        frame[frame.length - 2] = (byte) crc;
-        frame[frame.length - 1] = (byte) (crc >>> 8);
-        Log.d("WorkCardProtocol", "frame CRC=" + String.format("%04X", crc) + " low=" + String.format("%02X", frame[frame.length - 2]) + " high=" + String.format("%02X", frame[frame.length - 1]));
+        frame[frame.length - 2] = (byte) (crc >>> 8); // Protocol transmits CRC high byte first.
+        frame[frame.length - 1] = (byte) crc;
         return frame;
     }
 
@@ -126,10 +119,6 @@ public final class WorkCardProtocol {
         return result;
     }
 
-    public static byte[] rawCommand(Frame frame) {
-        return frame.raw;
-    }
-
     public static final class Frame {
         public final int masterAddress;
         public final int slaveAddress;
@@ -143,13 +132,6 @@ public final class WorkCardProtocol {
             this.function = function;
             this.data = data;
             this.raw = raw;
-        }
-
-        @Override
-        public String toString() {
-            return "Frame{ master=" + masterAddress + ", slave=" + slaveAddress
-                    + ", func=" + String.format("0x%02X", function)
-                    + ", data=" + hex(data) + " }";
         }
     }
 }

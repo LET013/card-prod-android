@@ -288,3 +288,10 @@ M	uniapp/src/services/nativeBridge.js
 M	uniapp/src/state/appState.js
 
 ```
+## 本次选择性迁移结果
+
+- 以reference分支为根，不执行无共同祖先的整树合并；
+- 未复制`app/.cxx`、构建目录、生成assets、旧ArcSoft实现或旧批次说明；
+- 保留参考分支FaceAISDK、CameraX、JNI串口、布局和资源；
+- 迁入三层数据流、V4.1接口入口、契约证据、测试和发布门禁；
+- 参考分支遗留但未使用的类单独登记，不在本批擅自删除。
