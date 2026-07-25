@@ -143,6 +143,10 @@ public final class DeviceDataLayer {
         return stateStore.section("socket");
     }
 
+    public JSONObject statusReportStatus() {
+        return stateStore.section("statusReport");
+    }
+
     public JSONObject recognitionStatus() {
         return stateStore.section("recognitionEngine");
     }
@@ -220,6 +224,32 @@ public final class DeviceDataLayer {
 
     public JSONObject reportConfirmedReturn(String cardNo, int slotId, String authType) throws Exception {
         return documentedBackendService.reportReturn(cardNo, slotId, authType);
+    }
+
+    /** Manual public trigger. Result describes local submission only, never backend ACK. */
+    public JSONObject reportSlotStatusNow() throws JSONException {
+        long requestedAt = System.currentTimeMillis();
+        JSONObject submitting = new JSONObject()
+                .put("state", "SUBMITTING")
+                .put("message", "正在提交卡槽状态到客户端上报链")
+                .put("requestedAt", requestedAt);
+        stateStore.updateSection("statusReport", "status.reportChanged", submitting);
+        try {
+            JSONObject result = commandCoordinator.reportSlotSnapshot();
+            stateStore.updateSection("statusReport", "status.reportChanged", result);
+            stateStore.record("backend.status.report.manual", result);
+            return result;
+        } catch (Exception error) {
+            JSONObject failed = new JSONObject()
+                    .put("state", "FAILED")
+                    .put("message", safeMessage(error))
+                    .put("knownSlotCount", 0)
+                    .put("requestedAt", requestedAt)
+                    .put("failedAt", System.currentTimeMillis());
+            stateStore.updateSection("statusReport", "status.reportChanged", failed);
+            stateStore.record("backend.status.report.manual.failed", failed);
+            return failed;
+        }
     }
 
     public void applySettings(JSONObject settings) throws JSONException {
@@ -516,7 +546,8 @@ public final class DeviceDataLayer {
         stopSlotReporter();
         long intervalMs = parsePositiveLong(settings == null ? null
                 : settings.opt("slotStatusReportIntervalMs"), 10000L);
-        slotReportTask = reportExecutor.scheduleAtFixedRate(commandCoordinator::reportSlotSnapshot,
+        slotReportTask = reportExecutor.scheduleAtFixedRate(
+                commandCoordinator::reportSlotSnapshotSafely,
                 intervalMs, intervalMs, TimeUnit.MILLISECONDS);
     }
 
