@@ -153,11 +153,11 @@ public final class DeviceCommandCoordinator {
                 known.length(), requestedAt, System.currentTimeMillis());
     }
 
-    /** Periodic path: preserve existing behavior while recording local failures. */
+    /** Periodic path: preserve old silence for blocked/no-data states and log real submissions. */
     public void reportSlotSnapshotSafely() {
         try {
             JSONObject result = reportSlotSnapshot();
-            if (!"NO_DATA".equals(result.optString("state"))) {
+            if ("SUBMITTED".equals(result.optString("state"))) {
                 stateStore.record("backend.status.report.periodic", result);
             }
         } catch (Exception error) {
