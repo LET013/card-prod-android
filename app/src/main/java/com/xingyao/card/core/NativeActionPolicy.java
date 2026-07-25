@@ -23,6 +23,7 @@ public final class NativeActionPolicy {
         publicActions.add("auth.logout");
         publicActions.add("settings.load");
         publicActions.add("cabinet.getSlots");
+        publicActions.add("status.reportNow");
         publicActions.add("face.getStatus");
         publicActions.add("face.verify");
         publicActions.add("fingerprint.getStatus");
