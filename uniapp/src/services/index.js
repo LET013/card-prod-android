@@ -50,7 +50,7 @@ const withFingerprintProgress = async (operation, request, onProgress) => {
   }
 }
 
-const normalizeNativeEmployees = (items = []) => (Array.isArray(items) ? items : []).map((item, index) => ({
+const normalizeNativeEmployees = (items = []) => (Array.isArray(items) ? items : []).map((item) => ({
   id: String(item.employeeId || item.id || ''),
   employeeId: String(item.employeeId || item.id || ''),
   employeeCode: String(item.employeeCode || ''),
@@ -96,6 +96,18 @@ export const services = {
     const runtime = await nativeOrMock('device.snapshot', {}, () => mockService.getRuntime())
     if (runtime && Array.isArray(runtime.slots)) applyNativeSlots(runtime.slots)
     return JSON.parse(JSON.stringify(replaceRuntimeProjection(runtime || {})))
+  },
+
+  async reportStatusNow() {
+    const requestedAt = Date.now()
+    const result = await nativeOrMock('status.reportNow', {}, async () => ({
+      state: 'NO_DATA',
+      message: '浏览器模拟环境未连接真实MQTT后端，不发送卡槽状态',
+      knownSlotCount: 0,
+      requestedAt
+    }), 10000)
+    appState.runtime.statusReport = result || {}
+    return { ...appState.runtime.statusReport }
   },
 
   async getSerialStatus() {
