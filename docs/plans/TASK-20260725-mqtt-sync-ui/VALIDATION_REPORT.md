@@ -1,109 +1,58 @@
 # TASK-20260725：验证报告
 
-状态：PLANNED / NOT EXECUTED
+状态：第一实现子项自动验证通过；真机验证未执行
 
-当前仅完成只读审计和设计文档，尚未修改运行代码，因此所有实现验证均标记为未执行。
+本报告只覆盖用户已确认开工的第一子项：公开触发一次现有 MQTT `statusReport` 状态上报。员工、人脸、指纹同步仍处于未开工状态。
 
-## 1. 需求追踪矩阵
+## 1. 实现提交
 
-| 需求/验收 | 计划实现位置 | 计划测试 | 当前结果 |
+- 分支：`feature/mqtt-status-report-now`
+- 干净实现PR：#5
+- 自动验证PR：#6，仅用于触发永久CI，不合并
+- 已验证提交：`d7a3cd78f5511b83c87e101f8230dc52e8332c36`
+- CI运行：`30174885461`
+- CI结果：`success`
+
+## 2. 需求追踪矩阵
+
+| 需求/验收 | 实现位置 | 验证 | 结果 |
 |---|---|---|---|
-| R-001 / AC-001 | `CabinetHeader.vue`、`index.vue` | 未登录管理员打开面板 | 未执行 |
-| R-002 / AC-002 | `SyncPanel.vue`、Facade公开动作 | 五个按钮逐项触发 | 未执行 |
-| R-003 / AC-003 | `services/index.js`、Bridge | 搜索Vue中MQTT/HTTP直连 | 未执行 |
-| R-004 / AC-008 | `DeviceDataLayer.java` | 验证复用现有SyncManager | 未执行 |
-| R-005 / AC-009 | `DeviceDataLayer.java` | known slots上报 | 未执行 |
-| R-006 | `NativeActionPolicy.java` | 无会话授权测试 | 未执行 |
-| R-007 | `App.vue`、`appState` | sync事件投影 | 未执行 |
-| R-008 / AC-004 | `SyncPanel.vue` | 连续点击防重复 | 未执行 |
-| R-009 / AC-012 | UI文案 | 不出现服务端ACK误报 | 未执行 |
-| R-010 / AC-010 | `DeviceDataLayer.java` | 空Map上报 | 未执行 |
-| R-011 / AC-013 | 现有启动/下行链 | 回归测试 | 未执行 |
-| R-012 / AC-014 | CI/diff审计 | 保护路径检查 | 未执行 |
+| D-005 / AC-001 | `CabinetHeader.vue`、`index.vue` | 首页存在公开入口，不依赖管理员页面 | 通过静态审计与H5构建 |
+| D-007 | `DeviceCommandCoordinator.reportSlotSnapshotNow()` | 返回`BLOCKED/NO_DATA/SUBMITTED/FAILED` | 通过编译；真机分支未验证 |
+| R-003 | `services/index.js` | Vue只调用`status.reportNow` Bridge | 通过静态审计 |
+| R-005 / AC-009 | `DeviceDataLayer.reportStatusNow()` | 复用现有`statusReport`组装与发送链 | 通过静态审计 |
+| R-006 | `NativeActionPolicy.java` | `status.reportNow`为公开动作 | 单元测试通过 |
+| R-009 / AC-012 | `index.vue` | 明确“已提交不等于服务端ACK” | 通过静态审计与H5构建 |
+| R-010 / AC-010 | `DeviceCommandCoordinator` | 只收集`updatedAt > 0`卡槽；空Map返回`NO_DATA` | 通过静态审计 |
+| R-011 / AC-013 | 现有周期调用`reportSlotSnapshot()` | 周期入口继续存在并复用同一内部方法 | 通过diff审计 |
+| R-012 / AC-014 | 最终diff | 未修改传输、HTTP底层、串口、AAR | 通过diff审计与永久CI |
+| AC-015 | 永久CI | H5、单测、Debug APK | 全部通过 |
 
-## 2. 必测场景
+## 3. 实际修改文件
 
-### 2.1 UI与权限
-
-- 未登录管理员打开同步面板；
-- 未登录管理员触发四种同步；
-- 未登录管理员触发立即状态上报；
-- 管理员登录状态不影响公开同步入口；
-- 同步中按钮禁用；
-- 失败后按钮恢复；
-- 面板关闭后同步结果仍由全局投影接收。
-
-### 2.2 同步
-
-- 员工增量同步成功；
-- 员工删除ID应用；
-- 人脸特征同步成功；
-- 人脸图片URL同步成功；
-- 人脸模板部分失败时Applied游标不推进；
-- 指纹同步只写缓存；
-- 全部同步顺序和数量正确；
-- HTTP离线/超时；
-- 返回空集合；
-- 分页超过安全上限；
-- 连续点击；
-- 启动自动同步与手动同步接近同时发生；
-- MQTT下行`syncUser`与手动同步接近同时发生。
-
-### 2.3 状态上报
-
-- MQTT已认证且有已知卡槽；
-- MQTT未认证；
-- 无已知卡槽；
-- 只有部分已知卡槽；
-- 状态值映射为V4.1枚举；
-- 本地发送失败；
-- UI只显示本地可证明结果；
-- 周期上报行为未回退。
-
-### 2.4 重启与恢复
-
-- APP重启后员工、人脸、指纹Map从Android持久化恢复；
-- 进行中的UI状态不伪装为继续运行；
-- 同步版本恢复；
-- 后端重连后启动自动同步仍只执行一次。
-
-## 3. 静态检查
-
-计划运行：
-
-```bash
-node --check uniapp/src/services/nativeBridge.js
-node --check uniapp/src/services/index.js
-node --check uniapp/src/services/mockService.js
-node --check uniapp/src/state/appState.js
+```text
+app/src/main/java/com/xingyao/card/core/DeviceApplicationFacade.java
+app/src/main/java/com/xingyao/card/core/DeviceCommandCoordinator.java
+app/src/main/java/com/xingyao/card/core/DeviceDataLayer.java
+app/src/main/java/com/xingyao/card/core/NativeActionPolicy.java
+app/src/test/java/com/xingyao/card/core/NativeActionPolicyTest.java
+uniapp/src/components/CabinetHeader.vue
+uniapp/src/pages/index/index.vue
+uniapp/src/services/index.js
+docs/plans/TASK-20260725-mqtt-sync-ui/IMPLEMENTATION_SCOPE.md
+docs/plans/TASK-20260725-mqtt-sync-ui/VALIDATION_REPORT.md
 ```
 
-并检查：
+`DeviceCommandCoordinator.java`属于Android客户端业务协调层。本次仅将现有状态上报方法拆为周期入口和可返回本地结果的手动入口，没有修改MQTT连接、Topic、签名、Envelope、QoS或响应解析。
 
-- Vue中不存在Paho、WebSocket、MQTT凭证或HTTP同步分页；
-- 外部协议字段未新增；
-- Bridge动作只存在于客户端内部；
-- 没有修改只读所有权文件。
+## 4. 所有权审计
 
-## 4. 构建检查
-
-计划运行：
-
-```bash
-cd uniapp && npm run build:h5
-./gradlew :app:testDebugUnitTest --no-daemon --console=plain
-./gradlew :app:assembleDebug --no-daemon --console=plain
-```
-
-## 5. 文件所有权检查
-
-最终diff不得包含：
+未修改：
 
 ```text
 BackendTransportManager.java
 BackendHttpGateway.java
 BackendHttpClient.java
-DeviceCommandCoordinator.java
 SerialConnectionManager.java
 WorkCardProtocol.java
 serialport/**
@@ -111,13 +60,56 @@ serial-debug/**
 app/libs/**
 ```
 
-## 6. 真机验证
+未新增第二套MQTT实现、HTTP同步实现、卡槽映射或串口实现。
 
-以下项目在没有设备证据前必须报告为“未验证”：
+## 5. 自动验证
+
+永久CI运行 `30174885461` 已通过：
+
+- 严格三层、契约与仓库污染检查；
+- 前端JavaScript语法检查；
+- uni-app H5真实构建；
+- H5写入Android assets；
+- Android JVM单元测试；
+- Debug APK构建与内容检查。
+
+## 6. 结果语义审计
+
+### `BLOCKED`
+
+条件：后端业务会话未认证。
+
+UI文案不会显示发送成功。
+
+### `NO_DATA`
+
+条件：Android卡槽Map中不存在`updatedAt > 0`的真实卡槽。
+
+不生成默认`EMPTY/OCCUPIED`状态。
+
+### `SUBMITTED`
+
+条件：现有客户端发送链已接受`statusReport`请求。
+
+返回`ackTracked=false`，UI明确说明不等于服务端ACK。
+
+### `FAILED`
+
+条件：客户端本地组装或发送调用抛出异常。
+
+只返回本地失败，不推断服务端状态。
+
+## 7. 未验证
+
+以下项目没有设备或后端证据，仍标记为未验证：
 
 - rk3568_r安装；
-- MQTT真实Broker登录；
-- `statusReport`服务端接收；
-- 后端三类同步真实数据；
-- FaceAISDK真实模板导入；
-- 串口真实卡槽状态进入Map。
+- 真实MQTT Broker连接与登录；
+- 服务端是否收到`statusReport`；
+- `statusReportResp.code/msg`；
+- 真实串口卡槽状态是否进入Android Map；
+- 公开按钮在目标竖屏设备上的触控尺寸与视觉效果。
+
+## 8. 后续子项
+
+员工同步、人脸同步和指纹同步没有进入本批。每一项必须重新执行专项审计、更新设计并获得用户确认后才能开工。
