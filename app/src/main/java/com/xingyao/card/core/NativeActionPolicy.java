@@ -28,6 +28,7 @@ public final class NativeActionPolicy {
         publicActions.add("fingerprint.getStatus");
         publicActions.add("fingerprint.verify");
         publicActions.add("fingerprint.cancel");
+        publicActions.add("status.reportNow");
         PUBLIC_ACTIONS = Collections.unmodifiableSet(publicActions);
 
         LinkedHashMap<String, String> permissions = new LinkedHashMap<>();
