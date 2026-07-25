@@ -1,6 +1,6 @@
 <template>
   <view class="page-root home-page">
-    <CabinetHeader :cabinet-number="appState.settings.cabinetNumber" @user="passwordVisible = true" />
+    <CabinetHeader :cabinet-number="appState.settings.cabinetNumber" @sync="openStatusPanel" @user="passwordVisible = true" />
 
     <scroll-view class="slot-scroll" scroll-y>
       <view class="slot-grid">
@@ -18,6 +18,34 @@
     </view>
 
     <PasswordModal v-if="passwordVisible" @close="passwordVisible = false" @submit="login" />
+
+    <ModalShell v-if="statusPanelVisible" closable close-on-mask @close="statusPanelVisible = false">
+      <view class="status-report-card">
+        <view class="status-report-icon"><IconGlyph name="refresh" /></view>
+        <text class="status-report-title">设备状态上报</text>
+        <text class="status-report-copy">将 Android 卡槽缓存中已经确认的真实状态提交到现有 MQTT 上报链。</text>
+
+        <view class="status-line">
+          <text>后端会话</text>
+          <b :class="socketAuthenticated ? 'online' : 'offline'">{{ socketMessage }}</b>
+        </view>
+
+        <view class="report-result" :class="reportResult.state.toLowerCase()">
+          <view class="report-result-head">
+            <text>{{ reportStateLabel }}</text>
+            <text v-if="reportResult.requestedAt">{{ formatTime(reportResult.requestedAt) }}</text>
+          </view>
+          <text class="report-message">{{ reportResult.message }}</text>
+          <text v-if="reportResult.state === 'SUBMITTED'" class="report-detail">已提交 {{ reportResult.knownSlotCount }} 个已知卡槽；当前客户端未跟踪服务端 ACK。</text>
+          <text v-else-if="reportResult.code" class="report-detail">{{ reportResult.code }}</text>
+        </view>
+
+        <button class="primary-gradient-button report-button" :disabled="reportRunning" @click="submitStatusReport">
+          {{ reportRunning ? '正在提交...' : '立即上报卡槽状态' }}
+        </button>
+        <text class="ack-note">“已提交”仅表示现有客户端发送链已接受请求，不代表服务端确认成功。</text>
+      </view>
+    </ModalShell>
 
     <ModalShell v-if="methodVisible" closable close-on-mask @close="methodVisible = false">
       <view class="method-card">
@@ -53,6 +81,16 @@ const HOME_ROWS = 10
 
 const passwordVisible = ref(false)
 const methodVisible = ref(false)
+const statusPanelVisible = ref(false)
+const reportRunning = ref(false)
+const reportResult = reactive({
+  state: 'READY',
+  code: '',
+  message: '尚未提交状态上报请求',
+  knownSlotCount: 0,
+  ackTracked: false,
+  requestedAt: 0
+})
 const recognition = reactive({ visible: false, type: 'FACE', status: 'DETECTING', message: '', successText: '4号卡门已开锁', successHint: '请您尽快完成现场操作' })
 
 onMounted(async () => {
@@ -85,6 +123,55 @@ const rightLegendItems = computed(() => [
   { key: 'chargeFault', label: '充电故障', color: SLOT_STATUS_META.CHARGING_FAULT.color, count: count(SLOT_STATUS.CHARGING_FAULT) },
   { key: 'comm', label: '通信故障', color: SLOT_STATUS_META.COMMUNICATION_FAULT.color, count: count(SLOT_STATUS.COMMUNICATION_FAULT) }
 ])
+
+const socketAuthenticated = computed(() => appState.runtime.socket?.state === 'AUTHENTICATED')
+const socketMessage = computed(() => appState.runtime.socket?.message || '后端通信状态未知')
+const reportStateLabel = computed(() => ({
+  READY: '等待操作',
+  BLOCKED: '暂不可上报',
+  NO_DATA: '没有可上报数据',
+  SUBMITTED: '已提交到客户端发送链',
+  FAILED: '本地发送失败'
+}[reportResult.state] || reportResult.state))
+
+const formatTime = (value) => {
+  const date = new Date(Number(value))
+  if (Number.isNaN(date.getTime())) return ''
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+}
+
+const openStatusPanel = async () => {
+  statusPanelVisible.value = true
+  try { await services.getRuntime() } catch (error) {}
+}
+
+const submitStatusReport = async () => {
+  if (reportRunning.value) return
+  reportRunning.value = true
+  Object.assign(reportResult, {
+    state: 'READY',
+    code: '',
+    message: '正在提交状态上报请求',
+    knownSlotCount: 0,
+    ackTracked: false,
+    requestedAt: Date.now()
+  })
+  try {
+    const result = await services.reportStatusNow()
+    Object.assign(reportResult, result || {})
+  } catch (error) {
+    Object.assign(reportResult, {
+      state: 'FAILED',
+      code: 'STATUS_REPORT_REQUEST_FAILED',
+      message: error.message || '状态上报请求失败',
+      knownSlotCount: 0,
+      ackTracked: false,
+      requestedAt: Date.now()
+    })
+  } finally {
+    reportRunning.value = false
+  }
+}
 
 const login = async (password, helpers) => {
   try {
@@ -202,6 +289,24 @@ const finishRecognition = () => {
   font-size: clamp(13px, 3.5vw, 28px);
   white-space: nowrap;
 }
+.status-report-card { width: min(84vw, 470px); padding: 30px 26px 25px; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
+.status-report-icon { width: 58px; height: 58px; border-radius: 18px; padding: 14px; box-sizing: border-box; background: #e5efff; color: #1f76ff; }
+.status-report-title { margin-top: 16px; font-size: 21px; font-weight: 650; color: #27364d; }
+.status-report-copy { margin-top: 8px; color: #75859b; font-size: 13px; line-height: 1.55; text-align: center; }
+.status-line { width: 100%; margin-top: 20px; min-height: 48px; border-radius: 12px; background: #f4f7fb; padding: 0 14px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #5e6f85; font-size: 13px; }
+.status-line b { min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-line .online { color: #08a447; }
+.status-line .offline { color: #e34d5b; }
+.report-result { width: 100%; margin-top: 12px; border-radius: 13px; padding: 14px; box-sizing: border-box; background: #f4f7fb; color: #53657b; }
+.report-result.submitted { background: #e8f8ee; color: #137f43; }
+.report-result.blocked, .report-result.no_data { background: #fff5df; color: #98650c; }
+.report-result.failed { background: #ffedef; color: #b32f3d; }
+.report-result-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 650; }
+.report-message { display: block; margin-top: 8px; font-size: 14px; line-height: 1.5; }
+.report-detail { display: block; margin-top: 6px; font-size: 12px; line-height: 1.45; opacity: .82; }
+.report-button { width: 100%; min-height: 52px; margin-top: 18px; border-radius: 13px; font-size: 16px; }
+.report-button[disabled] { opacity: .58; }
+.ack-note { margin-top: 10px; color: #8a98aa; font-size: 11px; line-height: 1.5; text-align: center; }
 .method-card { padding: 34px 28px 28px; width: min(82vw, 440px); }
 .method-title { display: block; text-align: center; font-size: clamp(20px, 2.7vw, 24px); font-weight: 650; color:#27364d; }
 .method-copy { display:block; text-align:center; color:#8290a3; font-size:13px; margin-top:9px; }
