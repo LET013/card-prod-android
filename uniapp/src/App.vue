@@ -30,6 +30,7 @@ onLaunch(() => {
     applySlotStatus(data)
   })
   nativeBridge.on('socket.statusChanged', (data) => { if (data) appState.runtime.socket = data })
+  nativeBridge.on('status.reportChanged', (data) => { if (data) appState.runtime.statusReport = data })
   nativeBridge.on('device.authorizationChanged', (data) => { if (data) appState.runtime.deviceAuthorization = data })
   nativeBridge.on('recognition.statusChanged', (data) => { if (data) appState.runtime.recognitionEngine = data })
 })
