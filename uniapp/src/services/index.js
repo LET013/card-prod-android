@@ -50,7 +50,7 @@ const withFingerprintProgress = async (operation, request, onProgress) => {
   }
 }
 
-const normalizeNativeEmployees = (items = []) => (Array.isArray(items) ? items : []).map((item, index) => ({
+const normalizeNativeEmployees = (items = []) => (Array.isArray(items) ? items : []).map((item) => ({
   id: String(item.employeeId || item.id || ''),
   employeeId: String(item.employeeId || item.id || ''),
   employeeCode: String(item.employeeCode || ''),
@@ -150,6 +150,17 @@ export const services = {
     const slots = Array.isArray(result) ? result : result?.slots
     if (!Array.isArray(slots)) throw new Error('INVALID_NATIVE_SLOT_RESPONSE')
     return JSON.parse(JSON.stringify(applyNativeSlots(slots)))
+  },
+
+  reportStatusNow() {
+    return nativeOrMock('status.reportNow', {}, async () => ({
+      state: 'NO_DATA',
+      code: 'NO_KNOWN_SLOT_STATE',
+      message: '浏览器模拟环境没有可上报的真实卡槽状态',
+      knownSlotCount: 0,
+      ackTracked: false,
+      requestedAt: Date.now()
+    }), 15000)
   },
 
   unlockDoor: (slotNumber) => nativeOrMock('cabinet.unlockDoor', { slotNumber }, () => mockService.unlockDoor(slotNumber), 5000),
