@@ -99,6 +99,7 @@ public final class DeviceApplicationFacade {
                     }
                     return success();
                 case "device.snapshot": return ActionResult.immediate(runtime().snapshot());
+                case "status.reportNow": return ActionResult.immediate(runtime().reportSlotStatusNow());
                 case "serial.getStatus": return ActionResult.immediate(runtime().serialStatus());
                 case "serial.reconnect":
                     runtime().reconnectSerial();
@@ -244,6 +245,7 @@ public final class DeviceApplicationFacade {
         if (action.startsWith("fingerprint.")) return "FINGERPRINT_ACTION_FAILED";
         if (action.startsWith("employee.")) return "EMPLOYEE_ACTION_FAILED";
         if (action.startsWith("settings.")) return "SETTINGS_ACTION_FAILED";
+        if (action.startsWith("status.")) return "STATUS_REPORT_FAILED";
         return "NATIVE_ACTION_FAILED";
     }
 
