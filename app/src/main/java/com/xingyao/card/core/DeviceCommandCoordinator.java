@@ -133,7 +133,20 @@ public final class DeviceCommandCoordinator {
     }
 
     public void reportSlotSnapshot() {
-        if (!backendPort.isAuthenticated()) return;
+        submitSlotSnapshot(false);
+    }
+
+    public JSONObject reportSlotSnapshotNow() {
+        return submitSlotSnapshot(true);
+    }
+
+    private JSONObject submitSlotSnapshot(boolean recordManualResult) {
+        long requestedAt = System.currentTimeMillis();
+        if (!backendPort.isAuthenticated()) {
+            return finishStatusReportResult(recordManualResult, statusReportResult(
+                    "BLOCKED", "BACKEND_NOT_AUTHENTICATED",
+                    "后端业务会话未认证，暂时无法提交状态上报", requestedAt));
+        }
         try {
             JSONArray source = stateStore.backendSlots();
             JSONArray known = new JSONArray();
@@ -144,11 +157,42 @@ public final class DeviceCommandCoordinator {
                     known.put(source.getJSONObject(index));
                 }
             }
-            if (known.length() == 0) return;
+            if (known.length() == 0) {
+                return finishStatusReportResult(recordManualResult, statusReportResult(
+                        "NO_DATA", "NO_KNOWN_SLOT_STATE",
+                        "当前没有可上报的已确认卡槽状态", requestedAt));
+            }
             send(new JSONObject().put("cmd", "statusReport")
                     .put("data", new JSONObject().put("slots", known)));
+            return finishStatusReportResult(recordManualResult, statusReportResult(
+                    "SUBMITTED", "", "已提交上报请求", requestedAt)
+                    .put("knownSlotCount", known.length())
+                    .put("ackTracked", false));
         } catch (Exception error) {
-            stateStore.record("backend.status.report.failed", message(error));
+            JSONObject result = statusReportResult("FAILED", "STATUS_REPORT_SEND_FAILED",
+                    "客户端本地发送失败：" + safeMessage(error), requestedAt);
+            stateStore.record("backend.status.report.failed", result);
+            return finishStatusReportResult(recordManualResult, result);
+        }
+    }
+
+    private JSONObject finishStatusReportResult(boolean recordManualResult, JSONObject result) {
+        if (recordManualResult) stateStore.record("backend.status.report.requested", result);
+        return result;
+    }
+
+    private static JSONObject statusReportResult(String state, String code, String message,
+                                                 long requestedAt) {
+        try {
+            return new JSONObject()
+                    .put("state", state)
+                    .put("code", code == null ? "" : code)
+                    .put("message", message == null ? "" : message)
+                    .put("requestedAt", requestedAt)
+                    .put("knownSlotCount", 0)
+                    .put("ackTracked", false);
+        } catch (JSONException ignored) {
+            return new JSONObject();
         }
     }
 
