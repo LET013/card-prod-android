@@ -66,7 +66,8 @@ export const defaultRuntime = {
   recognitionEngine: { state: 'STOPPED', message: '识别引擎尚未启动' },
   serial: { state: 'DISCONNECTED', message: '串口未连接' },
   socket: { state: 'DISCONNECTED', message: '后端通信未连接' },
-  http: { state: 'PENDING', message: '等待HTTP注册/激活' }
+  http: { state: 'PENDING', message: '等待HTTP注册/激活' },
+  statusReport: { state: 'IDLE', message: '尚未手动上报卡槽状态', knownSlotCount: 0 }
 }
 
 const seededStatus = {
