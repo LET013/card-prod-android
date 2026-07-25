@@ -9,11 +9,13 @@ import static org.junit.Assert.assertTrue;
 
 public class NativeActionPolicyTest {
     @Test
-    public void publicRecognitionActionsDoNotRequireAdminSession() {
+    public void publicRecognitionAndStatusActionsDoNotRequireAdminSession() {
         assertTrue(NativeActionPolicy.isPublicAction("face.verify"));
         assertTrue(NativeActionPolicy.isPublicAction("cabinet.getSlots"));
         assertTrue(NativeActionPolicy.isPublicAction("settings.load"));
+        assertTrue(NativeActionPolicy.isPublicAction("status.reportNow"));
         assertNull(NativeActionPolicy.requiredPermission("face.verify"));
+        assertNull(NativeActionPolicy.requiredPermission("status.reportNow"));
     }
 
     @Test
