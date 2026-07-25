@@ -37,14 +37,14 @@ public final class DeviceCommandCoordinator {
     private final LinkedHashMap<Integer, String> activeFaults = new LinkedHashMap<>();
 
     public DeviceCommandCoordinator(DeviceStateStore stateStore,
-                                    NativeSettingsRepository settingsRepository,
-                                    InboundCommandRepository inboundRepository,
-                                    DeviceDataSyncManager syncManager,
-                                    DeviceOperationEngine operationEngine,
-                                    BackendPort backendPort,
-                                    BackendHttpGateway httpGateway,
-                                    AppControl appControl,
-                                    ConfigControl configControl) {
+                                     NativeSettingsRepository settingsRepository,
+                                     InboundCommandRepository inboundRepository,
+                                     DeviceDataSyncManager syncManager,
+                                     DeviceOperationEngine operationEngine,
+                                     BackendPort backendPort,
+                                     BackendHttpGateway httpGateway,
+                                     AppControl appControl,
+                                     ConfigControl configControl) {
         this.stateStore = stateStore;
         this.settingsRepository = settingsRepository;
         this.inboundRepository = inboundRepository;
@@ -132,24 +132,61 @@ public final class DeviceCommandCoordinator {
         } catch (Exception ignored) { }
     }
 
-    public void reportSlotSnapshot() {
-        if (!backendPort.isAuthenticated()) return;
+    /**
+     * Sends one documented statusReport through the existing backend port and returns only facts
+     * that the client can prove locally. SUBMITTED never means the service acknowledged code=0.
+     */
+    public JSONObject reportSlotSnapshot() throws Exception {
+        long requestedAt = System.currentTimeMillis();
+        if (!backendPort.isAuthenticated()) {
+            return reportResult("BLOCKED", "后端业务会话未认证，未发送卡槽状态",
+                    0, requestedAt, 0L);
+        }
+        JSONArray known = knownBackendSlots();
+        if (known.length() == 0) {
+            return reportResult("NO_DATA", "当前没有可上报的已确认卡槽状态",
+                    0, requestedAt, 0L);
+        }
+        send(new JSONObject().put("cmd", "statusReport")
+                .put("data", new JSONObject().put("slots", known)));
+        return reportResult("SUBMITTED", "卡槽状态已提交到客户端发送链，等待服务端处理",
+                known.length(), requestedAt, System.currentTimeMillis());
+    }
+
+    /** Periodic path: preserve existing behavior while recording local failures. */
+    public void reportSlotSnapshotSafely() {
         try {
-            JSONArray source = stateStore.backendSlots();
-            JSONArray known = new JSONArray();
-            JSONArray nativeSlots = stateStore.slotsSnapshot().optJSONArray("slots");
-            for (int index = 0; nativeSlots != null && index < nativeSlots.length(); index++) {
-                JSONObject nativeSlot = nativeSlots.getJSONObject(index);
-                if (nativeSlot.optLong("updatedAt", 0L) > 0L && index < source.length()) {
-                    known.put(source.getJSONObject(index));
-                }
+            JSONObject result = reportSlotSnapshot();
+            if (!"NO_DATA".equals(result.optString("state"))) {
+                stateStore.record("backend.status.report.periodic", result);
             }
-            if (known.length() == 0) return;
-            send(new JSONObject().put("cmd", "statusReport")
-                    .put("data", new JSONObject().put("slots", known)));
         } catch (Exception error) {
             stateStore.record("backend.status.report.failed", message(error));
         }
+    }
+
+    private JSONArray knownBackendSlots() throws JSONException {
+        JSONArray source = stateStore.backendSlots();
+        JSONArray known = new JSONArray();
+        JSONArray nativeSlots = stateStore.slotsSnapshot().optJSONArray("slots");
+        for (int index = 0; nativeSlots != null && index < nativeSlots.length(); index++) {
+            JSONObject nativeSlot = nativeSlots.getJSONObject(index);
+            if (nativeSlot.optLong("updatedAt", 0L) > 0L && index < source.length()) {
+                known.put(source.getJSONObject(index));
+            }
+        }
+        return known;
+    }
+
+    private static JSONObject reportResult(String state, String message, int knownSlotCount,
+                                           long requestedAt, long submittedAt) throws JSONException {
+        JSONObject result = new JSONObject()
+                .put("state", state)
+                .put("message", message)
+                .put("knownSlotCount", knownSlotCount)
+                .put("requestedAt", requestedAt);
+        if (submittedAt > 0L) result.put("submittedAt", submittedAt);
+        return result;
     }
 
     public synchronized void reportHardwareFault(JSONObject slot) {
