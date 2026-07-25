@@ -167,13 +167,13 @@ public final class DeviceStateStore {
         return dataRepository.snapshot();
     }
 
-
     private void seedDefaults() {
         synchronized (lock) {
             sections.put("serial", state("DISCONNECTED", "串口通信未启动"));
             sections.put("socket", state("DISCONNECTED", "MQTT通信未启动"));
             sections.put("http", state("PENDING", "HTTP通信未初始化"));
             sections.put("sync", state("PENDING", "业务数据尚未同步"));
+            sections.put("statusReport", state("IDLE", "尚未手动上报卡槽状态"));
             sections.put("recognitionEngine", state("STOPPED", "人脸引擎未启动"));
             sections.put("deviceAuthorization", state("PENDING", "等待后端授权状态"));
         }
