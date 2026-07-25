@@ -130,6 +130,8 @@ public final class DeviceApplicationFacade {
                 case "cabinet.unlockAll":
                     return ActionResult.immediate(runtime().openAllDoors(true, requestId, "UI"));
                 case "cabinet.getSlots": return ActionResult.immediate(runtime().slots());
+                case "status.reportNow":
+                    return deferred(requestId, "STATUS_REPORT_FAILED", () -> runtime().reportStatusNow());
                 case "face.getStatus": return ActionResult.immediate(runtime().recognitionStatus());
                 case "face.reactivate": runtime().restartFaceRecognition(); return success();
                 case "face.enroll":
