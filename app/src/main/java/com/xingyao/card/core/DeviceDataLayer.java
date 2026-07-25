@@ -143,6 +143,10 @@ public final class DeviceDataLayer {
         return stateStore.section("socket");
     }
 
+    public JSONObject reportStatusNow() {
+        return commandCoordinator.reportSlotSnapshotNow();
+    }
+
     public JSONObject recognitionStatus() {
         return stateStore.section("recognitionEngine");
     }
