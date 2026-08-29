@@ -1,0 +1,195 @@
+plugins {
+    id 'com.android.application'
+}
+
+def uniappDirectory = file("${rootDir}/uniapp")
+def uniappDistDirectory = file("${uniappDirectory}/dist/build/h5")
+def windowsHost = System.getProperty('os.name').toLowerCase().contains('windows')
+def serialSimulatorEnabled = (project.findProperty('serialSimulator') ?: 'false').toString().toBoolean()
+def appChannelId = (project.findProperty('appChannelId') ?: 'test').toString().trim()
+def appVersionCode = (project.findProperty('appVersionCode') ?: '1').toString().toInteger()
+def appVersionName = (project.findProperty('appVersionName') ?: '1.0').toString().trim()
+def officialSigningValues = [
+        storeFile: project.findProperty('officialSigningStoreFile')?.toString()?.trim(),
+        storePassword: project.findProperty('officialSigningStorePassword')?.toString(),
+        keyAlias: project.findProperty('officialSigningKeyAlias')?.toString()?.trim(),
+        keyPassword: project.findProperty('officialSigningKeyPassword')?.toString()
+]
+def hasAnyOfficialSigningValue = officialSigningValues.values().any { it }
+def hasOfficialSigning = officialSigningValues.values().every { it }
+if (appChannelId.isEmpty()) {
+    throw new GradleException('appChannelId must not be blank')
+}
+if (appVersionCode < 1 || appVersionName.isEmpty()) {
+    throw new GradleException('appVersionCode must be positive and appVersionName must not be blank')
+}
+if (hasAnyOfficialSigningValue && !hasOfficialSigning) {
+    throw new GradleException('Official signing requires store file, store password, key alias, and key password')
+}
+if (hasOfficialSigning && !file(officialSigningValues.storeFile).isFile()) {
+    throw new GradleException('Official signing store file does not exist')
+}
+
+// 防止 uni-app safe-delete 阈值拦截导致构建输出不一致 → 白屏
+// 每次构建前先删除上次的 assets 目录，使 safe-delete 无需判定批量删除
+tasks.register('cleanUniappH5Assets', Delete) {
+    group = 'build'
+    description = 'Deletes stale uni-app build output to bypass safe-delete bulk threshold.'
+    delete fileTree("${uniappDistDirectory}/assets")
+    delete file("${uniappDistDirectory}/index.html")
+}
+
+tasks.register('buildUniappH5', Exec) {
+    group = 'build'
+    description = 'Builds the embedded uni-app H5 resources.'
+    dependsOn tasks.named('cleanUniappH5Assets')
+    workingDir uniappDirectory
+    if (windowsHost) {
+        commandLine 'npm.cmd', 'run', 'build:h5'
+    } else {
+        // Gradle子进程不会加载shell配置（nvm），Linux构建机需显式加载nvm。
+        commandLine 'bash', '-lc', 'export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; npm run build:h5'
+    }
+    inputs.files(fileTree("${uniappDirectory}/src"),
+            file("${uniappDirectory}/package.json"),
+            file("${uniappDirectory}/package-lock.json"),
+            file("${uniappDirectory}/pages.json"),
+            file("${uniappDirectory}/manifest.json"),
+            file("${uniappDirectory}/vite.config.js"))
+    outputs.dir uniappDistDirectory
+}
+
+tasks.register('verifyUniappH5') {
+    group = 'verification'
+    description = 'Fails the Android build when required embedded H5 startup assets are missing or inconsistent.'
+    dependsOn tasks.named('buildUniappH5')
+    doLast {
+        // 基础启动资源必须存在
+        [
+                file("${uniappDistDirectory}/index.html"),
+                file("${uniappDistDirectory}/static/brand/logo-white.png")
+        ].each { requiredAsset ->
+            if (!requiredAsset.isFile()) {
+                throw new GradleException("Missing required uni-app asset: ${requiredAsset}")
+            }
+        }
+
+        // 防止白屏：校验 index.html 引用的 JS/CSS 文件真实存在，避免 hash 不一致
+        def indexHtml = file("${uniappDistDirectory}/index.html")
+        if (indexHtml.isFile()) {
+            def htmlText = indexHtml.text
+            // 提取 <script src="./assets/xxx.js"> 和 <link href="./assets/xxx.css">
+            def scriptPattern = ~/<script[^>]+src="\.\/assets\/([^"]+\.js)"/
+            def linkPattern = ~/<link[^>]+href="\.\/assets\/([^"]+\.css)"/
+            scriptPattern.matcher(htmlText).each { match ->
+                def assetPath = file("${uniappDistDirectory}/assets/${match[1]}")
+                if (!assetPath.isFile()) {
+                    throw new GradleException("H5 index.html references missing JS asset: assets/${match[1]}")
+                }
+            }
+            linkPattern.matcher(htmlText).each { match ->
+                def assetPath = file("${uniappDistDirectory}/assets/${match[1]}")
+                if (!assetPath.isFile()) {
+                    throw new GradleException("H5 index.html references missing CSS asset: assets/${match[1]}")
+                }
+            }
+        }
+    }
+}
+
+android {
+    namespace 'com.xingyao.card'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.xingyao.card"
+        minSdk 21
+        targetSdk 33
+        versionCode appVersionCode
+        versionName appVersionName
+        manifestPlaceholders = [appChannelId: appChannelId]
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    signingConfigs {
+        official {
+            if (hasOfficialSigning) {
+                storeFile file(officialSigningValues.storeFile)
+                storePassword officialSigningValues.storePassword
+                keyAlias officialSigningValues.keyAlias
+                keyPassword officialSigningValues.keyPassword
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            buildConfigField 'boolean', 'SERIAL_SIMULATOR_ENABLED', 'false'
+        }
+        release {
+            buildConfigField 'boolean', 'SERIAL_SIMULATOR_ENABLED', 'false'
+            if (hasOfficialSigning) {
+                signingConfig signingConfigs.official
+            }
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    dataBinding { enabled = true }
+    lint { baseline = file("lint-baseline.xml") }
+    sourceSets {
+        main {
+            // Android Studio builds must package the current H5 output, never the stale legacy copy.
+            assets.srcDirs = [uniappDistDirectory]
+        }
+    }
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('verifyUniappH5')
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.10'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.10'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.10'
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.webkit:webkit:1.6.0'
+    implementation 'androidx.core:core:1.9.0'
+    implementation 'androidx.biometric:biometric:1.1.0'
+    // 串口通信使用 JNI SerialPort（serialport 独立库模块）
+    implementation fileTree(dir: 'libs', include: ['*.aar'])
+    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    implementation 'org.greenrobot:eventbus:3.3.1'
+    implementation 'com.squareup.okhttp3:okhttp:3.12.13'
+
+    // User-confirmed face engine. ArcSoft is intentionally not part of the build.
+    implementation 'io.github.faceaisdk:Android:2026.06.25'
+    def camerax_version = "1.4.2"
+    implementation "androidx.camera:camera-core:${camerax_version}"
+    implementation "androidx.camera:camera-camera2:${camerax_version}"
+    implementation "androidx.camera:camera-lifecycle:${camerax_version}"
+    implementation "androidx.camera:camera-view:${camerax_version}"
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}

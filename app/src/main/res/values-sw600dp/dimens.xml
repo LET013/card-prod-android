@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="face_scan_card_width">720dp</dimen>
+    <dimen name="face_scan_card_height">900dp</dimen>
+    <dimen name="face_scan_guide_width">440dp</dimen>
+    <dimen name="face_scan_guide_height">550dp</dimen>
+    <dimen name="face_scan_guide_top_margin">40dp</dimen>
+    <dimen name="face_scan_footer_height">282dp</dimen>
+</resources>

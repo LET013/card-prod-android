@@ -1,0 +1,35 @@
+/* ===== 全局表单视觉规范（修复 BUG-039） ===== */
+
+/* 必填字段红色星标 */
+.field-required {
+  position: relative;
+}
+.field-required::after {
+  content: ' *';
+  color: #e53e3e;
+  font-weight: 700;
+  font-size: 0.9em;
+  vertical-align: top;
+}
+
+/* 可编辑输入框——加深边框避免类禁用态错觉 */
+input[type="text"],
+input[type="password"],
+input[type="number"] {
+  border: 1px solid #b7c4d3;
+}
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus {
+  border-color: #1f76ff;
+  box-shadow: 0 0 0 2px rgba(31, 118, 255, .18);
+}
+
+/* 选择器与textarea同理 */
+textarea {
+  border: 1px solid #b7c4d3;
+}
+textarea:focus {
+  border-color: #1f76ff;
+  box-shadow: 0 0 0 2px rgba(31, 118, 255, .18);
+}

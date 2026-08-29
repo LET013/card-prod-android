@@ -1,0 +1,4 @@
+interface:
+  display_name: "功能开发审计循环"
+  short_description: "项目内所有任务强制审计，写入前重读 AGENTS 边界"
+  default_prompt: "Use $audit-feature-change as the mandatory workflow for every task in this repository; re-read every applicable AGENTS.md before each write and apply the relevant audit gates."

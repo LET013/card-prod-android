@@ -1,0 +1,61 @@
+# Android related
+build/
+app/build/
+app/src/main/assets/
+.gradle/
+local.properties
+*.iml
+.idea/
+*.apk
+*.jks
+*.keystore
+*.aar
+*.jar
+*.class
+bin/
+gen/
+out/
+proguard/
+*.log
+.DS_Store
+.cxx/
+app/.cxx/
+serial-debug/.cxx/
+serialport/.cxx/
+serialport/build/
+# UniApp / Vue related
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+.npmrc
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.cache/
+.vite/
+tmp/
+
+# Editor directories and files
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+*.backup
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Keep the reproducible Gradle Wrapper binary
+!gradle/wrapper/gradle-wrapper.jar

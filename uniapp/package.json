@@ -1,0 +1,49 @@
+{
+  "name": "uniapp-发卡机-client",
+  "version": "1.0.0",
+  "description": "UniApp client for 发卡机 protocol",
+  "scripts": {
+    "dev:h5": "uni",
+    "dev:mock": "node scripts/dev-mock.js",
+    "build:h5": "uni build",
+    "build:verify": "npm run build:h5 && node scripts/verify-no-mock.js",
+    "test:local-store": "node --test tests/localStore.business.test.mjs",
+    "test:multi-face": "node --test tests/multiFaceEnrollmentWorkflow.business.test.mjs tests/facePhotoDelivery.business.test.mjs",
+    "test:take-card": "node --test tests/takeCardWorkflow.business.test.mjs",
+    "test:card-event-retry": "node --test tests/cardEventRetryScheduler.business.test.mjs",
+    "test:sync-config": "node --test tests/syncConfigWorkflow.business.test.mjs",
+    "test:sync-user": "node --test tests/syncUserWorkflow.business.test.mjs",
+    "test:config-fields": "node --test tests/deviceConfigFields.business.test.mjs",
+    "test:unsupported-commands": "node --test tests/unsupportedDeviceCommandWorkflow.business.test.mjs",
+    "test:splash-activation": "node --test tests/splashActivation.business.test.mjs",
+    "test:admin-secondary": "node --test tests/adminSecondaryAccess.business.test.mjs",
+    "test:employee-mutation": "node --test tests/employeeMutationWorkflow.business.test.mjs",
+    "test:runtime-mode": "node --test tests/runtimeMode.business.test.mjs",
+    "test:status-report": "node --test tests/statusReportWorkflow.business.test.mjs",
+    "test:mqtt-dispatch": "node --test tests/mqttDispatch.business.test.mjs",
+    "test:slot-projection": "node --test tests/slotProjection.business.test.mjs",
+    "test:serial-topology": "node --test tests/serialTopologyGuard.business.test.mjs",
+    "test:upgrade-capability": "node --test tests/upgradeCapability.business.test.mjs",
+    "test:maintenance-capability": "node --test tests/maintenanceCapability.business.test.mjs",
+    "test:fingerprint-capability": "node --test tests/fingerprintCapability.business.test.mjs",
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "build:mp-weixin": "uni build -p mp-weixin"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-3090920231225001",
+    "@dcloudio/uni-components": "3.0.0-3090920231225001",
+    "@dcloudio/uni-h5": "3.0.0-3090920231225001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-3090920231225001",
+    "vue": "^3.3.13"
+  },
+  "devDependencies": {
+    "@dcloudio/uni-automator": "3.0.0-3090920231225001",
+    "@dcloudio/uni-cli-shared": "3.0.0-3090920231225001",
+    "@dcloudio/uni-stacktracey": "3.0.0-3090920231225001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-3090920231225001",
+    "mqtt": "^5.15.2",
+    "sass": "^1.69.7",
+    "sql.js": "^1.14.1",
+    "vite": "^4.5.2"
+  }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 人脸录入悬浮层背景：白色、圆角，配合 elevation 产生灰色投射阴影 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:radius="20dp" />
+    <solid android:color="#FFFFFF" />
+</shape>

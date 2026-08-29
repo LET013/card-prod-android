@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="#1A1A2E">
+
+    <!-- ===== 串口配置 ===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <EditText
+            android:id="@+id/etPort"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="2"
+            android:text="/dev/ttyS5"
+            android:textColor="#00FF88"
+            android:textColorHint="#555"
+            android:hint="串口路径"
+            android:background="#16213E"
+            android:paddingStart="8dp"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/etBaudRate"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="57600"
+            android:textColor="#00FF88"
+            android:textColorHint="#555"
+            android:hint="波特率"
+            android:background="#16213E"
+            android:paddingStart="8dp"
+            android:inputType="number"
+            android:layout_marginStart="8dp" />
+
+        <Button
+            android:id="@+id/btnConnect"
+            android:layout_width="60dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:text="连接"
+            android:textSize="12sp"
+            android:textColor="#000"
+            android:background="#00FF88" />
+    </LinearLayout>
+
+    <!-- ===== 指令面板 ===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="8dp">
+
+        <EditText
+            android:id="@+id/etSlaveAddress"
+            android:layout_width="50dp"
+            android:layout_height="36dp"
+            android:text="01"
+            android:textColor="#FFD700"
+            android:textColorHint="#555"
+            android:hint="从站"
+            android:gravity="center"
+            android:background="#16213E"
+            android:inputType="text" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="从站"
+            android:textColor="#888"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+
+        <Button
+            android:id="@+id/btnQuery"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="查询"
+            android:textSize="11sp"
+            android:textColor="#FFF"
+            android:background="#0F3460" />
+
+        <Button
+            android:id="@+id/btnOpenDoor"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="开门"
+            android:textSize="11sp"
+            android:textColor="#FFF"
+            android:background="#0F3460" />
+
+        <Button
+            android:id="@+id/btnLed"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="LED"
+            android:textSize="11sp"
+            android:textColor="#FFF"
+            android:background="#0F3460" />
+
+        <Button
+            android:id="@+id/btnVersion"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="版本"
+            android:textSize="11sp"
+            android:textColor="#FFF"
+            android:background="#0F3460" />
+    </LinearLayout>
+
+    <!-- ===== 原始 HEX 发送 ===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <EditText
+            android:id="@+id/etRawHex"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:textColor="#FF4444"
+            android:textColorHint="#555"
+            android:hint="原始HEX (如 DDCC 0006 F0 01 5AA55AA5 01 XXXX)"
+            android:background="#16213E"
+            android:paddingStart="8dp"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/btnSendRaw"
+            android:layout_width="56dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:text="发送"
+            android:textSize="12sp"
+            android:textColor="#000"
+            android:background="#FF4444" />
+    </LinearLayout>
+
+    <!-- ===== 快捷指令行 ===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="4dp">
+
+        <Button
+            android:id="@+id/btnAdminOpen"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_weight="1"
+            android:text="管理员开门"
+            android:textSize="10sp"
+            android:textColor="#FFD700"
+            android:background="#16213E" />
+
+        <Button
+            android:id="@+id/btnClearLog"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="清空日志"
+            android:textSize="10sp"
+            android:textColor="#888"
+            android:background="#16213E" />
+
+        <Button
+            android:id="@+id/btnAutoPoll"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="自动轮询"
+            android:textSize="10sp"
+            android:textColor="#888"
+            android:background="#16213E" />
+    </LinearLayout>
+
+    <!-- ===== 连接状态 ===== -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="未连接"
+        android:textColor="#FF4444"
+        android:textSize="12sp"
+        android:gravity="center" />
+
+    <!-- ===== 日志列表 ===== -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="── 通信日志 ──"
+        android:textColor="#666"
+        android:textSize="11sp"
+        android:layout_marginTop="4dp" />
+
+    <ScrollView
+        android:id="@+id/svLog"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#0D1117"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/tvLog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="等待连接..."
+            android:textColor="#CCC"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:lineSpacingExtra="2dp" />
+    </ScrollView>
+</LinearLayout>

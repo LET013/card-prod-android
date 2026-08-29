@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:background="@color/primary_blue">
+
+    <!-- 人脸操作覆盖层：始终 VISIBLE 保证 TextureView SurfaceTexture 就绪（CameraX 启动预绑定）。
+         声明在 webview_container 之前，天然处于 z-order 底层；需人脸时 bringToFront。 -->
+    <FrameLayout
+        android:id="@+id/face_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#B20B1624"
+        android:visibility="visible">
+
+        <FrameLayout
+            android:id="@+id/face_scan_content"
+            android:layout_width="@dimen/face_scan_card_width"
+            android:layout_height="@dimen/face_scan_card_height"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_face_preview_clip"
+            android:clipChildren="true"
+            android:clipToOutline="true"
+            android:elevation="14dp"
+            android:foreground="@drawable/bg_face_scan_card_border"
+            android:outlineProvider="background">
+
+            <TextureView
+                android:id="@+id/camera_preview"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <com.xingyao.card.face.FaceScanOverlayView
+                android:id="@+id/face_scan_guide"
+                android:layout_width="@dimen/face_scan_guide_width"
+                android:layout_height="@dimen/face_scan_guide_height"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="@dimen/face_scan_guide_top_margin"
+                android:importantForAccessibility="no" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/face_scan_footer_height"
+                android:layout_gravity="bottom"
+                android:background="@drawable/bg_face_scan_footer" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingHorizontal="32dp"
+                android:paddingBottom="18dp">
+
+            <TextView
+                android:id="@+id/tvFaceStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:minHeight="34dp"
+                android:text="请正对摄像头"
+                android:textColor="#FFFFFF"
+                android:textSize="21sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:text="请保持面部完整进入识别区域"
+                android:textColor="#D0D9E5"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvFaceCountdown"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:textColor="#FFD700"
+                android:textSize="56sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnFaceCapture"
+                android:layout_width="240dp"
+                android:layout_height="48dp"
+                android:layout_marginTop="12dp"
+                android:text="拍照"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textAllCaps="false"
+                android:backgroundTint="#1F76FF" />
+
+            <Button
+                android:id="@+id/btnFaceCancel"
+                android:layout_width="180dp"
+                android:layout_height="44dp"
+                android:layout_marginTop="10dp"
+                android:text="取消"
+                android:textAllCaps="false"
+                android:textColor="#D7E2EF"
+                android:textSize="15sp"
+                android:backgroundTint="#26374D" />
+            </LinearLayout>
+        </FrameLayout>
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/webview_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <RelativeLayout
+        android:id="@+id/loading_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/primary_blue"
+        android:visibility="visible">
+        <FrameLayout
+            android:id="@+id/loading_icon"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:layout_centerInParent="true"
+            android:background="@color/primary_blue"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:contentDescription="@string/app_name">
+            <com.xingyao.card.webview.AssetImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
+                android:scaleType="fitCenter" />
+        </FrameLayout>
+        <TextView
+            android:id="@+id/bootstrap_progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/loading_icon"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:text="正在初始化..."
+            android:textColor="#99FFFFFF"
+            android:textSize="16sp" />
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:id="@+id/error_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/page_light_blue"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="32dp">
+            <TextView android:id="@+id/error_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/error_title" android:textSize="20sp" android:textColor="@color/black" android:textStyle="bold" />
+            <TextView android:id="@+id/error_message" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/error_unknown" android:textSize="16sp" android:textColor="@color/black" android:layout_marginTop="8dp" />
+            <Button android:id="@+id/retry_button" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/btn_retry" android:textSize="16sp" android:layout_marginTop="24dp" android:paddingLeft="32dp" android:paddingRight="32dp" android:paddingTop="12dp" android:paddingBottom="12dp" />
+        </LinearLayout>
+    </RelativeLayout>
+</RelativeLayout>

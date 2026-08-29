@@ -1,0 +1,17 @@
+{
+  "name": "faceai-server",
+  "version": "1.0.0",
+  "description": "本地人脸识别 HTTP 服务 — 提供人脸录入/搜索/清除 API",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "download-models": "node download-models.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs-node": "^1.7.1",
+    "canvas": "^2.11.2",
+    "express": "^4.18.2",
+    "face-api.js": "^0.22.2"
+  }
+}

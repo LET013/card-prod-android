@@ -1,0 +1,114 @@
+@use './form-global.scss';
+
+:root {
+  --primary: #1F76FF;
+  --primary-dark: #0A53C4;
+  --page-light: #E6F0FF;
+  --text: #30343B;
+  --content-pad: clamp(8px, 1.4vw, 18px);
+  --ui-font-size: 16px;
+}
+
+page, body, #app {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  background: var(--page-light);
+  color: var(--text);
+  font-size: var(--ui-font-size);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+view, text, input, textarea, button, scroll-view, image { box-sizing: border-box; }
+button { margin: 0; padding: 0; line-height: 1.2; transition: transform .15s ease, opacity .15s ease; }
+button::after { border: 0; }
+button:active { transform: scale(.95); opacity: .8; }
+button[disabled] { opacity: .5; pointer-events: none; }
+input { outline: none; }
+
+.page-root {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+/* Prevent narrow phones and large tablets from inheriting the same touch target sizes. */
+@media (max-width: 359px) {
+  :root { --ui-font-size: 15px; }
+}
+
+@media (min-width: 768px) {
+  :root { --content-pad: clamp(14px, 2vw, 28px); }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  .page-root { min-height: 100vh; min-height: 100dvh; }
+  .primary-gradient-button, .white-action-button { min-height: 44px; }
+}
+
+/* 管理页在柜机横屏上保留足够的触控宽高，不影响首页和窄屏操作。 */
+@media (min-width: 960px) and (orientation: landscape) {
+  .page-root .btn-grad,
+  .admin-dashboard .dialog-button,
+  .admin-dashboard .mqtt-refresh-button {
+    min-width: 132px;
+    height: 50px;
+    font-size: 16px;
+  }
+
+  .page-root .btn-sec,
+  .page-root .btn-minor,
+  .page-root .btn-unlock,
+  .page-root .role-toggle,
+  .admin-dashboard .inline-retry-button {
+    min-width: 106px;
+    height: 42px;
+    font-size: 14px;
+  }
+
+  .page-root .drawer-close { width: 40px; height: 40px; }
+}
+
+.primary-gradient-button {
+  border: 0;
+  background: linear-gradient(135deg, #4AA3FF 0%, #1F76FF 48%, #0A53C4 100%);
+  color: #fff;
+  border-radius: clamp(12px, 1.6vw, 18px);
+  font-size: clamp(16px, 2vw, 19px);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 9px 18px rgba(31, 118, 255, .22), inset 0 1px 1px rgba(255,255,255,.24);
+}
+
+.white-action-button {
+  border: 1px solid #d4dbe5;
+  background: linear-gradient(180deg, #fff, #f5f8fa);
+  color: #34373d;
+  border-radius: clamp(12px, 1.6vw, 18px);
+  font-size: clamp(16px, 1.9vw, 18px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fade-enter-active, .fade-leave-active { transition: opacity .18s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* H5 成功提示默认宽度过窄，避免人脸同步完成文案换行。 */
+uni-toast .uni-toast { width: 10em; }

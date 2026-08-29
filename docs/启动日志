@@ -1,0 +1,586 @@
+2026-08-09 10:55:03.102 20386-20386 MainActivity            com.xingyao.card                     D  onCreate startDeviceCoreService...
+2026-08-09 10:55:03.117 20386-20386 MainActivity            com.xingyao.card                     D  onCreate initManagers...
+2026-08-09 10:55:03.358 20386-20386 om.xingyao.car          com.xingyao.card                     W  Verification of void com.xingyao.card.webview.JsBridgeV2.emitDeviceInfo(java.lang.String) took 238.265ms (453.28 bytecodes/s) (4208B approximate peak alloc)
+2026-08-09 10:55:03.387 20386-20386 WebViewManager          com.xingyao.card                     I  ========== Device Info ==========
+2026-08-09 10:55:03.388 20386-20386 WebViewManager          com.xingyao.card                     I  Screen Resolution: 800 x 1280
+2026-08-09 10:55:03.389 20386-20386 WebViewManager          com.xingyao.card                     I  Density: 1.0
+2026-08-09 10:55:03.389 20386-20386 WebViewManager          com.xingyao.card                     I  Density DPI: 160
+2026-08-09 10:55:03.390 20386-20386 WebViewManager          com.xingyao.card                     I  Width DPI: 320.0
+2026-08-09 10:55:03.391 20386-20386 WebViewManager          com.xingyao.card                     I  Height DPI: 320.0
+2026-08-09 10:55:03.391 20386-20386 WebViewManager          com.xingyao.card                     I  Build Manufacturer: rockchip
+2026-08-09 10:55:03.392 20386-20386 WebViewManager          com.xingyao.card                     I  Build Model: rk3568_r
+2026-08-09 10:55:03.392 20386-20386 WebViewManager          com.xingyao.card                     I  Android Version: 11
+2026-08-09 10:55:03.393 20386-20386 WebViewManager          com.xingyao.card                     I  SDK Level: 30
+2026-08-09 10:55:03.393 20386-20386 WebViewManager          com.xingyao.card                     I  =================================
+2026-08-09 10:55:03.477 20386-20386 WebViewFactory          com.xingyao.card                     I  Loading com.google.android.webview version 128.0.6613.40 (code 661304001)
+2026-08-09 10:55:03.492 20386-20386 linker                  com.xingyao.card                     W  Warning: library "/product/app/webview/oat/arm64/webview.odex" ("/product/app/webview/oat/arm64/webview.odex") needed or dlopened by "/apex/com.android.art/lib64/libart.so" is not accessible by namespace "com_android_art" and will not work when the app moves to API level 24 or later (https://android.googlesource.com/platform/bionic/+/master/private-api-enforced-for-api-level-24) (allowing for now because this app's target API level is still 33)
+2026-08-09 10:55:03.494 20386-20386 om.xingyao.car          com.xingyao.card                     I  The ClassLoaderContext is a special shared library.
+2026-08-09 10:55:03.509 20386-20386 nativeloader            com.xingyao.card                     D  classloader namespace configured for unbundled product apk. library_path=/product/app/webview/lib/arm64:/product/app/webview/webview.apk!/lib/arm64-v8a:/product/lib64:/system/product/lib64
+2026-08-09 10:55:03.531 20386-20386 linker                  com.xingyao.card                     W  Warning: "/product/app/webview/webview.apk!/lib/arm64-v8a/libwebviewchromium.so" unused DT entry: unknown processor-specific (type 0x70000001 arg 0x0) (ignoring)
+2026-08-09 10:55:03.663 20386-20386 cr_WVCFactoryProvider   com.xingyao.card                     I  version=128.0.6613.40 (661304001) minSdkVersion=26 isBundle=true multiprocess=true packageId=2
+2026-08-09 10:55:03.726 20386-20450 chromium                com.xingyao.card                     I  [0809/105503.726401:INFO:variations_seed_loader.cc(68)] Failed to open file for reading.: No such file or directory (2)
+2026-08-09 10:55:03.727 20386-20450 cr_VariationsUtils      com.xingyao.card                     I  Failed reading seed file "/data/user/0/com.xingyao.card/app_webview/variations_seed_new"
+2026-08-09 10:55:03.778 20386-20386 om.xingyao.car          com.xingyao.card                     E  Invalid ID 0x00000000.
+2026-08-09 10:55:03.829 20386-20386 cr_LibraryLoader        com.xingyao.card                     I  Successfully loaded native library
+2026-08-09 10:55:03.836 20386-20386 cr_CachingUmaRecorder   com.xingyao.card                     I  Flushed 5 samples from 5 histograms, 0 samples were dropped.
+2026-08-09 10:55:03.845 20386-20386 cr_VariationsUtils      com.xingyao.card                     I  Loaded seed with age 49045s
+2026-08-09 10:55:03.863 20386-20386 cr_CombinedPProvider    com.xingyao.card                     I  #registerProvider() provider:WV.J8@f27b3b2 isPolicyCacheEnabled:false policyProvidersSize:0
+2026-08-09 10:55:03.869 20386-20386 cr_PolicyProvider       com.xingyao.card                     I  #setManagerAndSource() 0
+2026-08-09 10:55:03.881 20386-20386 cr_PlatformSer-Internal com.xingyao.card                     W  Unable to find GMS package on device
+2026-08-09 10:55:03.944 20386-20386 cr_CombinedPProvider    com.xingyao.card                     I  #linkNativeInternal() 1
+2026-08-09 10:55:03.948 20386-20386 cr_AppResProvider       com.xingyao.card                     I  #getApplicationRestrictionsFromUserManager() Bundle[EMPTY_PARCEL]
+2026-08-09 10:55:03.950 20386-20386 cr_PolicyProvider       com.xingyao.card                     I  #notifySettingsAvailable() 0
+2026-08-09 10:55:03.950 20386-20386 cr_CombinedPProvider    com.xingyao.card                     I  #onSettingsAvailable() 0
+2026-08-09 10:55:03.951 20386-20386 cr_CombinedPProvider    com.xingyao.card                     I  #flushPolicies()
+---------------------------- PROCESS STARTED (20453) for package com.xingyao.card ----------------------------
+2026-08-09 10:55:03.964 20453-20453 NetworkSecurityConfig   com.xingyao.card                     D  No Network Security Config specified, using platform default
+2026-08-09 10:55:03.965 20453-20453 cr_WebViewApkApp        com.xingyao.card                     I  version=128.0.6613.40 (661304001) minSdkVersion=26 isBundle=true processName=com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0
+2026-08-09 10:55:03.968 20453-20453 cr_ChildProcessService  com.xingyao.card                     I  Creating new ChildProcessService pid=20453
+2026-08-09 10:55:04.099 20386-20386 TetheringManager        com.xingyao.card                     I  registerTetheringEventCallback:com.xingyao.card
+2026-08-09 10:55:04.130 20386-20476 LinkProperties          com.xingyao.card                     D  addDnsServer dnsServer = /192.168.50.1
+2026-08-09 10:55:04.134 20386-20476 LinkProperties          com.xingyao.card                     D  addDnsServer new dnsServer = /192.168.50.1
+2026-08-09 10:55:04.170 20386-20476 chromium                com.xingyao.card                     E  [ERROR:simple_version_upgrade.cc(152)] Failed to write a new fake index.
+2026-08-09 10:55:04.207 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer dnsServer = /192.168.50.1
+2026-08-09 10:55:04.211 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer new dnsServer = /192.168.50.1
+2026-08-09 10:55:04.443 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer dnsServer = /192.168.50.1
+2026-08-09 10:55:04.446 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer new dnsServer = /192.168.50.1
+2026-08-09 10:55:04.848 20386-20386 MainActivity            com.xingyao.card                     D  onCreate prewarmCameraX...
+2026-08-09 10:55:04.923 20386-20386 MainActivity            com.xingyao.card                     D  CameraX Camera2Config 已配置
+2026-08-09 10:55:04.927 20386-20495 MainActivity            com.xingyao.card                     D  预加载 CameraX 关键类开始...
+2026-08-09 10:55:04.929 20386-20386 MainActivity            com.xingyao.card                     D  onCreate prewarmFaceAI...
+2026-08-09 10:55:04.930 20386-20496 MainActivity            com.xingyao.card                     D  P2 初始化 CameraProvider 开始（CameraValidator 重试在后台完成）...
+2026-08-09 10:55:04.933 20386-20386 MainActivity            com.xingyao.card                     D  onCreate startLocalHttpServer...
+2026-08-09 10:55:04.934 20386-20497 MainActivity            com.xingyao.card                     D  预初始化 FaceAI SDK 开始...
+2026-08-09 10:55:04.945 20386-20386 LocalHttpServer         com.xingyao.card                     D  Local HTTP server started on port 8088
+2026-08-09 10:55:04.945 20386-20386 MainActivity            com.xingyao.card                     D  Local HTTP server started on port 8088
+2026-08-09 10:55:04.945 20386-20386 MainActivity            com.xingyao.card                     D  onCreate loadUniApp...
+2026-08-09 10:55:04.963 20386-20496 QuirkSettingsLoader     com.xingyao.card                     D  QuirkSettings$MetadataHolderService is not found.
+2026-08-09 10:55:04.965 20386-20496 CameraX                 com.xingyao.card                     D  QuirkSettings from app metadata: null
+2026-08-09 10:55:04.973 20386-20496 CameraX                 com.xingyao.card                     D  QuirkSettings by default: QuirkSettings{enabledWhenDeviceHasQuirk=true, forceEnabledQuirks=[], forceDisabledQuirks=[]}
+2026-08-09 10:55:05.000 20386-20499 mali_so                 com.xingyao.card                     I  [File] : hardware/rockchip/mali_so/driver/product/base/src/mali_base_kbase.c; [Line] : 1311; [Func] : base_context_deal_with_version_affairs_rk_ext;
+                                                                                                    arm_release_ver of this mali_so is 'g2p0-01eac0', rk_so_ver is '8@0 '.
+2026-08-09 10:55:05.000 20386-20499 mali_so                 com.xingyao.card                     I  [File] : hardware/rockchip/mali_so/driver/product/base/src/mali_base_kbase.c; [Line] : 1327; [Func] : base_context_deal_with_version_affairs_rk_ext;
+                                                                                                    arm_release_vers are match. to set the full mali_ver 'g2p0-01eac0-x-8@0' as value of 'sys.gmali.version'.
+2026-08-09 10:55:05.058 20386-20386 MainActivity            com.xingyao.card                     D  onCreate END
+2026-08-09 10:55:05.106 20386-20480 cr_media                com.xingyao.card                     W  getBluetoothAdapter() requires BLUETOOTH permission
+2026-08-09 10:55:05.106 20386-20480 cr_media                com.xingyao.card                     W  registerBluetoothIntentsIfNeeded: Requires BLUETOOTH permission
+2026-08-09 10:55:05.187 20453-20472 cr_LibraryLoader        com.xingyao.card                     I  Successfully loaded native library
+2026-08-09 10:55:05.188 20453-20472 cr_CachingUmaRecorder   com.xingyao.card                     I  Flushed 2 samples from 2 histograms, 0 samples were dropped.
+2026-08-09 10:55:05.203 20453-20472 SystemServiceRegistry   com.xingyao.card                     W  No service published for: uimode
+2026-08-09 10:55:05.243 20453-20472 chromium                com.xingyao.card                     W  [WARNING:runtime_features.cc(605)] Fenced frames cannot be enabled in this configuration. Use --enable-features=FencedFrames instead.
+2026-08-09 10:55:05.244 20453-20472 chromium                com.xingyao.card                     W  [WARNING:runtime_features.cc(650)] SharedStorage cannot be enabled in this configuration. Use --enable-features=SharedStorageAPI in addition.
+2026-08-09 10:55:05.244 20453-20472 chromium                com.xingyao.card                     W  [WARNING:runtime_features.cc(660)] SharedStorage for M118+ cannot be enabled in this configuration. Use --enable-features=SharedStorageAPI,SharedStorageAPIM118 in addition.
+2026-08-09 10:55:05.479 20386-20510 DeviceQuirks            com.xingyao.card                     D  camera2 DeviceQuirks = 
+2026-08-09 10:55:05.482 20386-20510 CameraManagerGlobal     com.xingyao.card                     I  Connecting to camera service
+2026-08-09 10:55:05.547 20386-20497 TensorFlowLite          com.xingyao.card                     I  Loaded native library: tensorflowlite_jni
+2026-08-09 10:55:05.616 20386-20497 TensorFlowLite          com.xingyao.card                     I  Didn't load native library: tensorflowlite_jni_gms_client
+2026-08-09 10:55:05.621 20386-20497 tflite                  com.xingyao.card                     I  Initialized TensorFlow Lite runtime.
+2026-08-09 10:55:05.632 20386-20497 tflite                  com.xingyao.card                     I  Created TensorFlow Lite XNNPACK delegate for CPU.
+2026-08-09 10:55:05.633 20386-20497 tflite                  com.xingyao.card                     I  Replacing 230 out of 231 node(s) with delegate (TfLiteXNNPackDelegate) node, yielding 2 partitions for subgraph 0.
+2026-08-09 10:55:05.656 20386-20495 om.xingyao.car          com.xingyao.card                     W  Verification of void com.google.android.gms.internal.mlkit_vision_face.zzix.configure(com.google.firebase.encoders.config.EncoderConfig) took 195.955ms (4363.23 bytecodes/s) (29880B approximate peak alloc)
+2026-08-09 10:55:05.685 20386-20497 MainActivity            com.xingyao.card                     D  预初始化 FaceAI SDK 完成
+2026-08-09 10:55:05.841 20386-20386 Choreographer           com.xingyao.card                     I  Skipped 318 frames!  The application may be doing too much work on its main thread.
+2026-08-09 10:55:06.138 20386-20495 om.xingyao.car          com.xingyao.card                     W  Verification of void com.google.android.gms.internal.mlkit_vision_common.zzgh.configure(com.google.firebase.encoders.config.EncoderConfig) took 105.798ms (8081.37 bytecodes/s) (29888B approximate peak alloc)
+2026-08-09 10:55:06.175 20386-20510 CameraRepository        com.xingyao.card                     D  Added camera: 0
+2026-08-09 10:55:06.301 20386-20510 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:06.362 20386-20495 MainActivity            com.xingyao.card                     D  预加载 CameraX + ML Kit 关键类完成, 耗时 1434ms
+2026-08-09 10:55:06.438 20386-20510 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:06.506 20386-20510 CameraRepository        com.xingyao.card                     D  Added camera: 1
+2026-08-09 10:55:06.542 20386-20510 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:06.558 20386-20510 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:06.582 20386-20510 CameraValidator         com.xingyao.card                     D  Verifying camera lens facing on rk3568_r, lensFacingInteger: null
+2026-08-09 10:55:06.615 20386-20510 CameraValidator         com.xingyao.card                     W  Camera LENS_FACING_BACK verification failed (Ask Gemini)
+                                                                                                    java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+2026-08-09 10:55:06.639 20386-20510 CameraValidator         com.xingyao.card                     E  Camera LensFacing verification failed, existing cameras: [Camera@f65293e[id=0], Camera@7d04bd8[id=1]]
+2026-08-09 10:55:06.662 20386-20510 CameraX                 com.xingyao.card                     W  Retry init. Start time 4724527 current time 4725988 (Ask Gemini)
+                                                                                                    androidx.camera.core.impl.CameraValidator$CameraIdListIncorrectException: Expected camera missing from device.
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:142)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+                                                                                                    Caused by: java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393) 
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641) 
+                                                                                                    	at java.lang.Thread.run(Thread.java:923) 
+2026-08-09 10:55:07.037 20386-20386 MainActivity            com.xingyao.card                     D  TextureView SurfaceTexture available: 522x628
+2026-08-09 10:55:07.041 20386-20386 MainActivity            com.xingyao.card                     D  applyFacePreviewMirror: mirror=true w=522 h=628
+2026-08-09 10:55:07.376 20386-20531 CameraRepository        com.xingyao.card                     D  Added camera: 0
+2026-08-09 10:55:07.415 20386-20531 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:07.434 20386-20531 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:07.458 20386-20531 CameraRepository        com.xingyao.card                     D  Added camera: 1
+2026-08-09 10:55:07.480 20386-20531 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:07.494 20386-20531 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:07.513 20386-20531 CameraValidator         com.xingyao.card                     D  Verifying camera lens facing on rk3568_r, lensFacingInteger: null
+2026-08-09 10:55:07.526 20386-20531 CameraValidator         com.xingyao.card                     W  Camera LENS_FACING_BACK verification failed (Ask Gemini)
+                                                                                                    java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+2026-08-09 10:55:07.547 20386-20531 CameraValidator         com.xingyao.card                     E  Camera LensFacing verification failed, existing cameras: [Camera@a0de633[id=0], Camera@5b6b28f[id=1]]
+2026-08-09 10:55:07.558 20386-20531 CameraX                 com.xingyao.card                     W  Retry init. Start time 4724527 current time 4726894 (Ask Gemini)
+                                                                                                    androidx.camera.core.impl.CameraValidator$CameraIdListIncorrectException: Expected camera missing from device.
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:142)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+                                                                                                    Caused by: java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393) 
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641) 
+                                                                                                    	at java.lang.Thread.run(Thread.java:923) 
+2026-08-09 10:55:07.642 20386-20432 OpenGLRenderer          com.xingyao.card                     I  Davey! duration=7486ms; Flags=1, IntendedVsync=4719498754686, Vsync=4725177325842, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=4725187769880, AnimationStart=4725188118130, PerformTraversalsStart=4725192641298, DrawStart=4726355304373, SyncQueued=4726825814670, SyncStart=4726826578253, IssueDrawCommandsStart=4726829363379, SwapBuffers=4726959200850, FrameCompleted=4726986140936, DequeueBufferDuration=779333, QueueBufferDuration=608708, GpuCompleted=1883895112, 
+2026-08-09 10:55:07.735 20453-20472 chromium                com.xingyao.card                     I  [INFO:viewport_data.cc(133)] E2E_Used ViewportFitCover
+2026-08-09 10:55:08.070 20386-20386 om.xingyao.car          com.xingyao.card                     W  Verification of void com.xingyao.card.core.serial.DeviceSerialManager.<init>(boolean) took 170.683ms (978.42 bytecodes/s) (6792B approximate peak alloc)
+2026-08-09 10:55:08.306 20386-20510 CameraRepository        com.xingyao.card                     D  Added camera: 0
+2026-08-09 10:55:08.333 20386-20510 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:08.349 20386-20510 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:08.375 20386-20510 CameraRepository        com.xingyao.card                     D  Added camera: 1
+2026-08-09 10:55:08.395 20386-20510 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:08.420 20386-20510 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:08.456 20386-20510 CameraValidator         com.xingyao.card                     D  Verifying camera lens facing on rk3568_r, lensFacingInteger: null
+2026-08-09 10:55:08.472 20386-20510 CameraValidator         com.xingyao.card                     W  Camera LENS_FACING_BACK verification failed (Ask Gemini)
+                                                                                                    java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+2026-08-09 10:55:08.509 20386-20510 CameraValidator         com.xingyao.card                     E  Camera LensFacing verification failed, existing cameras: [Camera@1db3611[id=0], Camera@1cc4102[id=1]]
+2026-08-09 10:55:08.517 20386-20386 FAM.Listener            com.xingyao.card                     D  onCreate: {"state":"READY","message":"FaceAISDK已初始化","engine":"FaceAISDK","templateCount":4}
+2026-08-09 10:55:08.520 20386-20510 CameraX                 com.xingyao.card                     W  Retry init. Start time 4724527 current time 4727856 (Ask Gemini)
+                                                                                                    androidx.camera.core.impl.CameraValidator$CameraIdListIncorrectException: Expected camera missing from device.
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:142)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+                                                                                                    Caused by: java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393) 
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641) 
+                                                                                                    	at java.lang.Thread.run(Thread.java:923) 
+2026-08-09 10:55:08.568 20386-20386 DSM.Listener            com.xingyao.card                     D  DeviceCoreService created — waiting for bootstrap RUNNING to init serial
+2026-08-09 10:55:08.595 20386-20386 WebView                 com.xingyao.card                     W  [WARNING] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [vue-router]: importing from 'vue-router/dist/vue-router.esm-bundler.js' is deprecated. Use 'vue-router' directly.
+2026-08-09 10:55:08.606 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [main] createApp: initializing native bridge and listeners
+2026-08-09 10:55:08.616 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] NativeBridge initialized
+2026-08-09 10:55:08.635 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [main] all listeners registered, hydration triggered
+2026-08-09 10:55:08.727 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer dnsServer = /192.168.50.1
+2026-08-09 10:55:08.730 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer new dnsServer = /192.168.50.1
+2026-08-09 10:55:08.765 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer dnsServer = /192.168.50.1
+2026-08-09 10:55:08.768 20386-20386 LinkProperties          com.xingyao.card                     D  addDnsServer new dnsServer = /192.168.50.1
+2026-08-09 10:55:08.812 20386-20386 Choreographer           com.xingyao.card                     I  Skipped 165 frames!  The application may be doing too much work on its main thread.
+2026-08-09 10:55:08.815 20453-20472 chromium                com.xingyao.card                     I  [INFO:document_style_environment_variables.cc(78)] E2E_Used SafeAreaInsetBottom
+2026-08-09 10:55:08.870 20386-20498 LocalHttpServer         com.xingyao.card                     D  Request: GET /favicon.ico
+2026-08-09 10:55:08.962 20386-20432 OpenGLRenderer          com.xingyao.card                     I  Davey! duration=3100ms; Flags=0, IntendedVsync=4725207428315, Vsync=4728153856745, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=4728158418221, AnimationStart=4728158505721, PerformTraversalsStart=4728173403180, DrawStart=4728230202644, SyncQueued=4728255334980, SyncStart=4728255856480, IssueDrawCommandsStart=4728257676772, SwapBuffers=4728306342819, FrameCompleted=4728308141236, DequeueBufferDuration=496125, QueueBufferDuration=594417, GpuCompleted=1882045176, 
+2026-08-09 10:55:09.278 20386-20531 CameraRepository        com.xingyao.card                     D  Added camera: 0
+2026-08-09 10:55:09.289 20386-20531 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:09.300 20386-20531 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:09.319 20386-20531 CameraRepository        com.xingyao.card                     D  Added camera: 1
+2026-08-09 10:55:09.329 20386-20531 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:09.342 20386-20531 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:09.364 20386-20531 CameraValidator         com.xingyao.card                     D  Verifying camera lens facing on rk3568_r, lensFacingInteger: null
+2026-08-09 10:55:09.381 20386-20531 CameraValidator         com.xingyao.card                     W  Camera LENS_FACING_BACK verification failed (Ask Gemini)
+                                                                                                    java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+2026-08-09 10:55:09.402 20386-20531 CameraValidator         com.xingyao.card                     E  Camera LensFacing verification failed, existing cameras: [Camera@c0f1861[id=0], Camera@c1fae12[id=1]]
+2026-08-09 10:55:09.412 20386-20531 CameraX                 com.xingyao.card                     W  Retry init. Start time 4724527 current time 4728749 (Ask Gemini)
+                                                                                                    androidx.camera.core.impl.CameraValidator$CameraIdListIncorrectException: Expected camera missing from device.
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:142)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+                                                                                                    Caused by: java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393) 
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641) 
+                                                                                                    	at java.lang.Thread.run(Thread.java:923) 
+2026-08-09 10:55:10.057 20386-20386 Choreographer           com.xingyao.card                     I  Skipped 68 frames!  The application may be doing too much work on its main thread.
+2026-08-09 10:55:10.105 20386-20510 CameraRepository        com.xingyao.card                     D  Added camera: 0
+2026-08-09 10:55:10.116 20386-20510 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:10.130 20386-20510 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:10.148 20386-20510 CameraRepository        com.xingyao.card                     D  Added camera: 1
+2026-08-09 10:55:10.157 20386-20510 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:10.167 20386-20510 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:10.184 20386-20510 CameraValidator         com.xingyao.card                     D  Verifying camera lens facing on rk3568_r, lensFacingInteger: null
+2026-08-09 10:55:10.195 20386-20510 CameraValidator         com.xingyao.card                     W  Camera LENS_FACING_BACK verification failed (Ask Gemini)
+                                                                                                    java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+2026-08-09 10:55:10.211 20386-20510 CameraValidator         com.xingyao.card                     E  Camera LensFacing verification failed, existing cameras: [Camera@95eed6a[id=0], Camera@9f67636[id=1]]
+2026-08-09 10:55:10.222 20386-20510 CameraX                 com.xingyao.card                     W  Retry init. Start time 4724527 current time 4729558 (Ask Gemini)
+                                                                                                    androidx.camera.core.impl.CameraValidator$CameraIdListIncorrectException: Expected camera missing from device.
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:142)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+                                                                                                    Caused by: java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393) 
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167) 
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641) 
+                                                                                                    	at java.lang.Thread.run(Thread.java:923) 
+2026-08-09 10:55:10.415 20386-20432 OpenGLRenderer          com.xingyao.card                     I  Davey! duration=1582ms; Flags=1, IntendedVsync=4728177337406, Vsync=4729391623062, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=4729403886054, AnimationStart=4729403985804, PerformTraversalsStart=4729432423015, DrawStart=4729590643448, SyncQueued=4729644488912, SyncStart=4729645174912, IssueDrawCommandsStart=4729646997828, SwapBuffers=4729756879756, FrameCompleted=4729760597923, DequeueBufferDuration=491458, QueueBufferDuration=1594250, GpuCompleted=1865922240, 
+2026-08-09 10:55:10.461 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [main] native.ready received (may be late or duplicate)
+2026-08-09 10:55:10.538 20386-20386 chatty                  com.xingyao.card                     I  uid=10149(com.xingyao.card) identical 1 line
+2026-08-09 10:55:10.563 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [main] native.ready received (may be late or duplicate)
+2026-08-09 10:55:10.886 20386-20531 CameraRepository        com.xingyao.card                     D  Added camera: 0
+2026-08-09 10:55:10.895 20386-20531 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:10.904 20386-20531 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:10.920 20386-20531 CameraRepository        com.xingyao.card                     D  Added camera: 1
+2026-08-09 10:55:10.929 20386-20531 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:10.938 20386-20531 Camera2CameraInfo       com.xingyao.card                     I  Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+2026-08-09 10:55:10.953 20386-20531 CameraValidator         com.xingyao.card                     D  Verifying camera lens facing on rk3568_r, lensFacingInteger: null
+2026-08-09 10:55:10.964 20386-20531 CameraValidator         com.xingyao.card                     W  Camera LENS_FACING_BACK verification failed (Ask Gemini)
+                                                                                                    java.lang.IllegalArgumentException: No available camera can be found
+                                                                                                    	at androidx.camera.core.CameraSelector.select(CameraSelector.java:107)
+                                                                                                    	at androidx.camera.core.impl.CameraValidator.validateCameras(CameraValidator.java:109)
+                                                                                                    	at androidx.camera.core.CameraX.lambda$initAndRetryRecursively$2$androidx-camera-core-CameraX(CameraX.java:393)
+                                                                                                    	at androidx.camera.core.CameraX$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+                                                                                                    	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+                                                                                                    	at java.lang.Thread.run(Thread.java:923)
+2026-08-09 10:55:10.978 20386-20531 CameraValidator         com.xingyao.card                     E  Camera LensFacing verification failed, existing cameras: [Camera@6f79d72[id=0], Camera@9e1ebe[id=1]]
+2026-08-09 10:55:10.979 20386-20531 CameraX                 com.xingyao.card                     E  The device might underreport the amount of the cameras. Finish the initialize task since we are already reaching the maximum number of retries.
+2026-08-09 10:55:10.989 20386-20496 MainActivity            com.xingyao.card                     D  P2 初始化 CameraProvider 完成, 耗时 6059ms
+2026-08-09 10:55:11.656 20386-20386 DynamicRangeResolver    com.xingyao.card                     D  Resolved dynamic range for use case androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0 to no compatible HDR dynamic ranges.
+                                                                                                    DynamicRange@deddca0{encoding=UNSPECIFIED, bitDepth=0}
+                                                                                                    ->
+                                                                                                    DynamicRange@47691a3{encoding=SDR, bitDepth=8}
+2026-08-09 10:55:11.698 20386-20386 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:11.705 20386-20386 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:11.813 20386-20386 DeferrableSurface       com.xingyao.card                     D  Surface created[total_surfaces=1, used_surfaces=0](androidx.camera.core.processing.SurfaceEdge$SettableSurface@f6422cc}
+2026-08-09 10:55:11.842 20386-20386 DeferrableSurface       com.xingyao.card                     D  Surface created[total_surfaces=2, used_surfaces=0](androidx.camera.core.SurfaceRequest$2@2169fb8}
+2026-08-09 10:55:11.879 20386-20386 DeferrableSurface       com.xingyao.card                     D  New surface in use[total_surfaces=2, used_surfaces=1](androidx.camera.core.SurfaceRequest$2@2169fb8}
+2026-08-09 10:55:11.880 20386-20386 DeferrableSurface       com.xingyao.card                     D  use count+1, useCount=1 androidx.camera.core.SurfaceRequest$2@2169fb8
+2026-08-09 10:55:11.970 20386-20386 DeferrableSurface       com.xingyao.card                     D  Surface created[total_surfaces=3, used_surfaces=1](androidx.camera.core.impl.ImmediateSurface@4b265cd}
+2026-08-09 10:55:12.001 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271 ACTIVE
+2026-08-09 10:55:12.014 20386-20386 MainActivity            com.xingyao.card                     D  Camera bound persistently to fullscreen TextureView
+2026-08-09 10:55:12.017 20386-20386 MainActivity            com.xingyao.card                     D  applyFacePreviewMirror: mirror=true w=522 h=628
+2026-08-09 10:55:12.019 20386-20386 Choreographer           com.xingyao.card                     I  Skipped 57 frames!  The application may be doing too much work on its main thread.
+2026-08-09 10:55:12.023 20386-20510 DeviceQuirks            com.xingyao.card                     D  core DeviceQuirks = SurfaceOrderQuirk
+2026-08-09 10:55:12.024 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [] for camera: 0
+2026-08-09 10:55:12.052 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.ImageAnalysis-bbdb16b6-a23f-414c-8f0d-419fa0cf4ebf33153332 INACTIVE
+2026-08-09 10:55:12.054 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [] for camera: 0
+2026-08-09 10:55:12.069 20386-20432 OpenGLRenderer          com.xingyao.card                     I  Davey! duration=1067ms; Flags=0, IntendedVsync=4730346988789, Vsync=4731364845883, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=4731365764293, AnimationStart=4731365840418, PerformTraversalsStart=4731371566710, DrawStart=4731375661419, SyncQueued=4731400566838, SyncStart=4731401098838, IssueDrawCommandsStart=4731403437130, SwapBuffers=4731412549381, FrameCompleted=4731414890006, DequeueBufferDuration=688333, QueueBufferDuration=827166, GpuCompleted=1883515656, 
+2026-08-09 10:55:12.080 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use cases [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271, androidx.camera.core.ImageAnalysis-bbdb16b6-a23f-414c-8f0d-419fa0cf4ebf33153332] now ATTACHED
+2026-08-09 10:55:12.081 20386-20510 Camera2CameraControlImp com.xingyao.card                     D  setActive: isActive = true
+2026-08-09 10:55:12.090 20386-20386 MainActivity            com.xingyao.card                     D  Providing Surface for camera preview: 261871356
+2026-08-09 10:55:12.108 20386-20510 UseCaseAttachState      com.xingyao.card                     D  All use case: [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271, androidx.camera.core.ImageAnalysis-bbdb16b6-a23f-414c-8f0d-419fa0cf4ebf33153332] for camera: 0
+2026-08-09 10:55:12.112 20386-20560 ProfileInstaller        com.xingyao.card                     D  Installing profile for com.xingyao.card
+2026-08-09 10:55:12.130 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271] for camera: 0
+2026-08-09 10:55:12.187 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Resetting Capture Session
+2026-08-09 10:55:12.199 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Skipping Capture Session state check due to current camera state: INITIALIZED and previous session status: false
+2026-08-09 10:55:12.216 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Releasing session in state INITIALIZED
+2026-08-09 10:55:12.227 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Attempting to force open the camera.
+2026-08-09 10:55:12.240 20386-20510 CameraStateRegistry     com.xingyao.card                     D  tryOpenCamera(Camera@6f79d72[id=0]) [Available Cameras: 1, Already Open: false (Previous state: null)] --> SUCCESS
+2026-08-09 10:55:12.265 20386-20510 CameraStateRegistry     com.xingyao.card                     D  Recalculating open cameras:
+                                                                                                    Camera                                       State                 
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Camera@9e1ebe[id=1]                          UNKNOWN               
+                                                                                                    Camera@6f79d72[id=0]                         OPENING               
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Open count: 1 (Max allowed: 1)
+2026-08-09 10:55:12.276 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Opening camera.
+2026-08-09 10:55:12.286 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Transitioning camera internal state: INITIALIZED --> OPENING
+2026-08-09 10:55:12.293 20386-20510 CameraStateMachine      com.xingyao.card                     D  New public camera state CameraState{type=OPENING, error=null} from OPENING and null
+2026-08-09 10:55:12.294 20386-20510 CameraStateMachine      com.xingyao.card                     D  Publishing new public camera state CameraState{type=OPENING, error=null}
+2026-08-09 10:55:12.320 20386-20510 UseCaseAttachState      com.xingyao.card                     D  All use case: [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271, androidx.camera.core.ImageAnalysis-bbdb16b6-a23f-414c-8f0d-419fa0cf4ebf33153332] for camera: 0
+2026-08-09 10:55:12.508 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271 ACTIVE
+2026-08-09 10:55:12.518 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271] for camera: 0
+2026-08-09 10:55:12.592 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.ImageAnalysis-bbdb16b6-a23f-414c-8f0d-419fa0cf4ebf33153332 INACTIVE
+2026-08-09 10:55:12.599 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271] for camera: 0
+2026-08-09 10:55:12.658 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} CameraDevice.onOpened()
+2026-08-09 10:55:12.670 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Transitioning camera internal state: OPENING --> OPENED
+2026-08-09 10:55:12.693 20386-20510 CameraStateRegistry     com.xingyao.card                     D  Recalculating open cameras:
+                                                                                                    Camera                                       State                 
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Camera@9e1ebe[id=1]                          UNKNOWN               
+                                                                                                    Camera@6f79d72[id=0]                         OPEN                  
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Open count: 1 (Max allowed: 1)
+2026-08-09 10:55:12.694 20386-20510 CameraStateMachine      com.xingyao.card                     D  New public camera state CameraState{type=OPEN, error=null} from OPEN and null
+2026-08-09 10:55:12.695 20386-20510 CameraStateMachine      com.xingyao.card                     D  Publishing new public camera state CameraState{type=OPEN, error=null}
+2026-08-09 10:55:12.707 20386-20510 UseCaseAttachState      com.xingyao.card                     D  All use case: [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271, androidx.camera.core.ImageAnalysis-bbdb16b6-a23f-414c-8f0d-419fa0cf4ebf33153332] for camera: 0
+2026-08-09 10:55:12.752 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271] for camera: 0
+2026-08-09 10:55:12.804 20386-20510 SyncCaptureSessionBase  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@cc0d5f5] getSurface done with results: [Surface(name=android.graphics.SurfaceTexture@f9bd6fc)/@0xd92dbda, Surface(name=null)/@0xd00f72c]
+2026-08-09 10:55:12.807 20386-20510 CaptureSession          com.xingyao.card                     D  Opening capture session.
+2026-08-09 10:55:12.841 20386-20510 Camera2Cap...estBuilder com.xingyao.card                     D  template type = 1
+2026-08-09 10:55:12.854 20386-20510 SyncCaptureSessionImpl  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@cc0d5f5] start openCaptureSession
+2026-08-09 10:55:12.861 20386-20510 DeferrableSurface       com.xingyao.card                     D  use count+1, useCount=2 androidx.camera.core.SurfaceRequest$2@2169fb8
+2026-08-09 10:55:12.862 20386-20510 DeferrableSurface       com.xingyao.card                     D  New surface in use[total_surfaces=3, used_surfaces=2](androidx.camera.core.impl.ImmediateSurface@4b265cd}
+2026-08-09 10:55:12.862 20386-20510 DeferrableSurface       com.xingyao.card                     D  use count+1, useCount=1 androidx.camera.core.impl.ImmediateSurface@4b265cd
+2026-08-09 10:55:13.155 20386-20510 SyncCaptureSessionImpl  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@cc0d5f5] Session onConfigured()
+2026-08-09 10:55:13.160 20386-20510 CaptureSession          com.xingyao.card                     D  Attempting to send capture request onConfigured
+2026-08-09 10:55:13.161 20386-20510 CaptureSession          com.xingyao.card                     D  Issuing request for session.
+2026-08-09 10:55:13.163 20386-20510 Camera2Cap...estBuilder com.xingyao.card                     D  createCaptureRequest
+2026-08-09 10:55:13.205 20386-20510 CaptureSession          com.xingyao.card                     D  CameraCaptureSession.onConfigured() mState=OPENED
+2026-08-09 10:55:13.216 20386-20510 CaptureSession          com.xingyao.card                     D  CameraCaptureSession.onReady() OPENED
+2026-08-09 10:55:21.292 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] starting with cached config: [object Object]
+2026-08-09 10:55:21.304 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 0
+2026-08-09 10:55:21.325 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [main] totalSlots decreased to %d, trimming stale slot cache 10
+2026-08-09 10:55:21.334 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [trimStaleSlots] deleting slots_snapshot rows above slot 10
+2026-08-09 10:55:21.344 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 10
+2026-08-09 10:55:21.348 20386-20386 JsBridgeV2              com.xingyao.card                     I  bootstrap.start: requestId=req_138_1786244121273 serverUrl=https://card-test.quyohui.com:443
+2026-08-09 10:55:21.348 20386-20386 JsBridgeV2              com.xingyao.card                     D  bootstrap.start: submitting to ioExecutor...
+2026-08-09 10:55:21.426 20386-20553 EventBus                com.xingyao.card                     W  Subscriber to unregister was not registered before: class com.xingyao.card.webview.JsBridgeV2
+2026-08-09 10:55:21.486 20386-20632 JsBridgeV2              com.xingyao.card                     I  Bootstrap started in background
+2026-08-09 10:55:21.564 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: VERSION_CHECK 检查APP版本...
+2026-08-09 10:55:22.061 20386-20632 HttpClientManager       com.xingyao.card                     D  POST https://card-test.quyohui.com/api/v1/app-version/check
+2026-08-09 10:55:24.322 20386-20400 om.xingyao.car          com.xingyao.card                     I  Background young concurrent copying GC freed 100923(5408KB) AllocSpace objects, 12(424KB) LOS objects, 41% free, 30MB/52MB, paused 137us total 111.391ms
+2026-08-09 10:55:25.829 20386-20632 HttpClientManager       com.xingyao.card                     D  HTTP 200 https://card-test.quyohui.com/api/v1/app-version/check BODY={"msg":"操作成功","code":200}
+2026-08-09 10:55:25.862 20386-20632 HttpClientManager       com.xingyao.card                     D  GET https://card-test.quyohui.com/api/v1/device/config
+2026-08-09 10:55:25.890 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: REGISTERED 设备已注册
+2026-08-09 10:55:25.920 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: GETTING_CONFIG 获取设备配置...
+2026-08-09 10:55:26.184 20386-20632 HttpClientManager       com.xingyao.card                     D  HTTP 200 https://card-test.quyohui.com/api/v1/device/config BODY={"msg":"操作成功","code":200,"data":{"baudRate":57600,"cameraFacing":"back","cameraFrameHeight":480,"cameraFrameWidth":640,"cameraMirror":true,"cameraRotation":0,"captureTimeout":8000,"communicationMode":"MQTT","developerPassword":"666666","faceRecognitionTimeout":30000,"faceThreshold":0.80,"fingerEnabled":"0","fingerThreshold":0.80,"groupSize":5,"httpHost":"card-test.quyohui.com","httpPort":443,"mqttHeartbeatInterval":60000,"mqttHost":"119.146.88.108","mqttPort":48419,"mqttReconnectInitialInterval":1000,"mqttReconnectMaxInterval":60000,"mqttStatusReportInterval":300000,"needFaceLiveness":false,"pollingMode":"GROUP","searchIntervalTime":3000,"searchTimeout":15000,"serialPollEnabled":true,"serialPollInterval":5000,"serialPort":"/dev/ttyS5","serialResponseTimeout":700,"slotSortDirection":"HORIZONTAL","slotStatusPushInterval":300000,"superAdminPassword":"123456","totalSlots":10}}
+2026-08-09 10:55:26.201 20386-20632 DeviceBootstrapManager  com.xingyao.card                     I  Device config validated: 10 slots, mode=MQTT, mqtt=119.146.88.108:48419
+2026-08-09 10:55:26.325 20386-20632 DeviceBootstrapManager  com.xingyao.card                     I  MQTT config from server: 119.146.88.108:48419
+2026-08-09 10:55:26.354 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: CONNECTING_MQTT 连接MQTT...
+2026-08-09 10:55:27.541 20386-20632 XMqttClient             com.xingyao.card                     I  Connecting to tcp://119.146.88.108:48419 as 3335c2249304473f8e4c727d9d7dda4a
+2026-08-09 10:55:28.104 20386-20667 XMqttClient             com.xingyao.card                     I  MQTT connected to tcp://119.146.88.108:48419 (reconnect=false)
+2026-08-09 10:55:28.122 20386-20667 XMqttClient             com.xingyao.card                     I  Subscribed to card/2A45688C/down (qos=1)
+2026-08-09 10:55:28.137 20386-20667 XMqttClient             com.xingyao.card                     I  Subscribed to card/2A45688C/down/response (qos=1)
+2026-08-09 10:55:28.200 20386-20632 MqttSignUtil            com.xingyao.card                     D  sign input: lg_299f32d1:login:1786244128198:{}
+2026-08-09 10:55:28.236 20386-20632 XMqttClient             com.xingyao.card                     D  Published raw to card/2A45688C/up (152 bytes)
+2026-08-09 10:55:28.236 20386-20632 DeviceBootstrapManager  com.xingyao.card                     D  Login message sent to card/2A45688C/up: msgId=lg_299f32d1
+2026-08-09 10:55:28.284 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: MQTT_CONNECTED MQTT 已连接
+2026-08-09 10:55:28.301 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: LOGGING_IN 设备登录中...
+2026-08-09 10:55:28.391 20386-20667 XMqttClient             com.xingyao.card                     D  Received on card/2A45688C/down/response: {"data":{"msg":"success","code":0,"token":"f951c23e-b647-40bc-b7aa-b2bd909a78d5"},"msgId":"bf78aa29-c84b-403e-9718-51853445d4e9","cmd":"loginResp","timestamp":1786244129294}
+2026-08-09 10:55:28.393 20386-20667 XMqttClient             com.xingyao.card                     D  Posted to EventBus: MqttMessageEvent{cmd=loginResp, msgId=bf78aa29-c84b-403e-9718-51853445d4e9, topic=card/2A45688C/down/response}
+2026-08-09 10:55:28.438 20386-20632 XMqttClient             com.xingyao.card                     D  Credentials set: deviceCode=2A45688C signingKey=***
+2026-08-09 10:55:28.448 20386-20632 MqttSignUtil            com.xingyao.card                     D  sign input: hb_bf6e550f:heartbeat:1786244128447:{}
+2026-08-09 10:55:28.469 20386-20632 XMqttClient             com.xingyao.card                     D  Published raw to card/2A45688C/heartbeat (157 bytes)
+2026-08-09 10:55:28.469 20386-20632 BaseMqttService         com.xingyao.card                     D  Heartbeat sent to card/2A45688C/heartbeat
+2026-08-09 10:55:28.471 20386-20632 JsBridgeV2              com.xingyao.card                     I  setMqttClient: client=non-null connected=true
+2026-08-09 10:55:28.472 20386-20632 JsBridgeV2              com.xingyao.card                     I  Bootstrap complete, MQTT client injected. connected=true
+2026-08-09 10:55:28.504 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: LOGGED_IN 设备登录成功
+2026-08-09 10:55:28.505 20386-20386 DSM.Listener            com.xingyao.card                     I  Bootstrap RUNNING — initializing serial with server config
+2026-08-09 10:55:28.515 20386-20386 DSM.Listener            com.xingyao.card                     D  onStatusChanged: {"state":"CONNECTING","message":"正在连接 \/dev\/ttyS5 @ 57600","port":"\/dev\/ttyS5","baudRate":57600,"protocol":"WORK_CARD_V1.5","simulator":false,"polling":false,"pollingEnabled":false,"firmwareUpgradeInProgress":false,"totalSlots":100,"responseTimeoutMs":700,"pollingIntervalMs":200,"sentBytes":0,"receivedBytes":0,"lastReceivedAt":null,"lastError":null}
+2026-08-09 10:55:28.516 20386-20386 SerialConnectionManager com.xingyao.card                     D  正在打开串口: /dev/ttyS5 @ 57600
+2026-08-09 10:55:28.525 20386-20386 SerialPort              com.xingyao.card                     D  libSerialPort.so 加载成功
+2026-08-09 10:55:28.525 20386-20386 SerialPort-JNI          com.xingyao.card                     D  Opening serial port /dev/ttyS5
+2026-08-09 10:55:28.525 20386-20386 SerialPort-JNI          com.xingyao.card                     D  open() fd = 189
+2026-08-09 10:55:28.525 20386-20386 SerialPort-JNI          com.xingyao.card                     D  tcgetattr: c_cflag=0x1cb1 iflag=0x0 oflag=0x4 lflag=0xa30
+2026-08-09 10:55:28.525 20386-20386 SerialPort-JNI          com.xingyao.card                     D  配置生效: c_cflag=0x1cb1 iflag=0x0 VMIN=1 VTIME=0 ispeed=4097 ospeed=4097
+2026-08-09 10:55:28.525 20386-20386 SerialPort-JNI          com.xingyao.card                     D  标志检查: CREAD=1 CLOCAL=1 CS8=1 CRTSCTS=0 CSTOPB=0 PARENB=0
+2026-08-09 10:55:28.526 20386-20386 SerialPort-JNI          com.xingyao.card                     D  TIOCMGET 当前状态: RTS=1 DTR=1 CTS=1 DSR=0
+2026-08-09 10:55:28.526 20386-20386 SerialPort-JNI          com.xingyao.card                     D  RTS + DTR 已拉高
+2026-08-09 10:55:28.526 20386-20386 SerialPort-JNI          com.xingyao.card                     D  RS485 当前配置: flags=0x0, delay_rts_before=0, delay_rts_after=0
+2026-08-09 10:55:28.526 20386-20386 SerialPort-JNI          com.xingyao.card                     D  TIOCSRS485 失败 (errno=25)
+2026-08-09 10:55:28.526 20386-20386 SerialPort-JNI          com.xingyao.card                     D  串口配置完成
+2026-08-09 10:55:28.526 20386-20386 om.xingyao.car          com.xingyao.card                     W  Accessing hidden field Ljava/io/FileDescriptor;->descriptor:I (greylist, JNI, allowed)
+2026-08-09 10:55:28.526 20386-20386 SerialPort-JNI          com.xingyao.card                     D  串口打开成功: fd=189, baudRate=57600
+2026-08-09 10:55:28.527 20386-20386 SerialManager           com.xingyao.card                     D  fd.valid()=true, fd=java.io.FileDescriptor@3448cf9
+2026-08-09 10:55:28.528 20386-20386 SerialPort-JNI          com.xingyao.card                     D  串口缓冲区已清空: fd=189
+2026-08-09 10:55:28.531 20386-20386 SerialManager           com.xingyao.card                     I  串口打开成功: /dev/ttyS5 @ 57600
+2026-08-09 10:55:28.535 20386-20670 SerialManager           com.xingyao.card                     D  读取线程已启动, tid=289
+2026-08-09 10:55:28.535 20386-20670 SerialManager           com.xingyao.card                     D  进入阻塞 read() 等待数据...
+2026-08-09 10:55:28.543 20386-20386 DSM.Listener            com.xingyao.card                     D  onStatusChanged: {"state":"CONNECTED","message":"已连接 \/dev\/ttyS5 @ 57600，工作卡协议V1.5，自动轮询已关闭","port":"\/dev\/ttyS5","baudRate":57600,"protocol":"WORK_CARD_V1.5","simulator":false,"polling":false,"pollingEnabled":false,"firmwareUpgradeInProgress":false,"totalSlots":100,"responseTimeoutMs":700,"pollingIntervalMs":200,"sentBytes":0,"receivedBytes":0,"lastReceivedAt":null,"lastError":null}
+2026-08-09 10:55:28.551 20386-20386 DSM.Listener            com.xingyao.card                     D  onStatusChanged: {"state":"CONNECTED","message":"已连接 \/dev\/ttyS5 @ 57600，自动轮询已开启","port":"\/dev\/ttyS5","baudRate":57600,"protocol":"WORK_CARD_V1.5","simulator":false,"polling":true,"pollingEnabled":true,"firmwareUpgradeInProgress":false,"totalSlots":10,"responseTimeoutMs":700,"pollingIntervalMs":200,"sentBytes":0,"receivedBytes":0,"lastReceivedAt":null,"lastError":null}
+2026-08-09 10:55:28.556 20386-20386 DSM.Listener            com.xingyao.card                     I  Serial started: simulator=false, port=/dev/ttyS5, baud=57600, slots=10
+2026-08-09 10:55:28.593 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] progress: RUNNING 设备运行中
+2026-08-09 10:55:28.626 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 10
+2026-08-09 10:55:28.634 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/pages-splash-splash.bed58667.js:1] [bootstrap] success: [object Object]
+2026-08-09 10:55:28.664 20386-20386 MainActivity            com.xingyao.card                     D  applyFacePreviewMirror: mirror=true w=522 h=628
+2026-08-09 10:55:28.706 20386-20386 DeferrableSurface       com.xingyao.card                     D  surface closed,  useCount=2 closed=true androidx.camera.core.SurfaceRequest$2@2169fb8
+2026-08-09 10:55:28.707 20386-20386 DeferrableSurface       com.xingyao.card                     D  surface closed,  useCount=0 closed=true androidx.camera.core.processing.SurfaceEdge$SettableSurface@f6422cc
+2026-08-09 10:55:28.709 20386-20386 DeferrableSurface       com.xingyao.card                     D  Surface terminated[total_surfaces=2, used_surfaces=2](androidx.camera.core.processing.SurfaceEdge$SettableSurface@f6422cc}
+2026-08-09 10:55:28.711 20386-20386 DeferrableSurface       com.xingyao.card                     D  use count-1,  useCount=1 closed=true androidx.camera.core.SurfaceRequest$2@2169fb8
+2026-08-09 10:55:28.715 20386-20386 DeferrableSurface       com.xingyao.card                     D  surface closed,  useCount=1 closed=true androidx.camera.core.impl.ImmediateSurface@4b265cd
+2026-08-09 10:55:28.736 20386-20386 MainActivity            com.xingyao.card                     W  Requested camera unavailable, falling back to first available camera: back
+2026-08-09 10:55:28.754 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use cases [androidx.camera.core.Preview-7f1a3e23-0a31-47ce-a08e-110166f219c0207371271, androidx.camera.core.ImageAnalysis-bbdb16b6-a23f-414c-8f0d-419fa0cf4ebf33153332] now DETACHED for camera
+2026-08-09 10:55:28.755 20386-20510 UseCaseAttachState      com.xingyao.card                     D  All use case: [] for camera: 0
+2026-08-09 10:55:28.770 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Resetting Capture Session
+2026-08-09 10:55:28.783 20386-20510 SyncCaptureSessionImpl  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@cc0d5f5] Session call close()
+2026-08-09 10:55:28.810 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Releasing session in state OPENED
+2026-08-09 10:55:28.811 20386-20510 Camera2CameraControlImp com.xingyao.card                     D  setActive: isActive = false
+2026-08-09 10:55:28.824 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [] for camera: 0
+2026-08-09 10:55:28.843 20386-20667 XMqttClient             com.xingyao.card                     D  Received on card/2A45688C/down/response: {"data":{"msg":"success","code":0,"serverTime":1786244129518},"msgId":"a15af252-b8ef-4cfd-84ac-85c2d0708e02","cmd":"heartbeatResp","timestamp":1786244129518}
+2026-08-09 10:55:28.847 20386-20667 XMqttClient             com.xingyao.card                     D  Posted to EventBus: MqttMessageEvent{cmd=heartbeatResp, msgId=a15af252-b8ef-4cfd-84ac-85c2d0708e02, topic=card/2A45688C/down/response}
+2026-08-09 10:55:28.875 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [] for camera: 0
+2026-08-09 10:55:28.907 20386-20510 VideoUsageControl       com.xingyao.card                     D  resetDirectly: mVideoUsage reset!
+2026-08-09 10:55:28.920 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Closing camera.
+2026-08-09 10:55:28.942 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Transitioning camera internal state: OPENED --> CLOSING
+2026-08-09 10:55:28.963 20386-20510 CameraStateRegistry     com.xingyao.card                     D  Recalculating open cameras:
+                                                                                                    Camera                                       State                 
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Camera@9e1ebe[id=1]                          UNKNOWN               
+                                                                                                    Camera@6f79d72[id=0]                         CLOSING               
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Open count: 1 (Max allowed: 1)
+2026-08-09 10:55:28.964 20386-20510 CameraStateMachine      com.xingyao.card                     D  New public camera state CameraState{type=CLOSING, error=null} from CLOSING and null
+2026-08-09 10:55:28.964 20386-20510 CameraStateMachine      com.xingyao.card                     D  Publishing new public camera state CameraState{type=CLOSING, error=null}
+2026-08-09 10:55:29.004 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Resetting Capture Session
+2026-08-09 10:55:29.031 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Skipping Capture Session state check due to current camera state: CLOSING and previous session status: false
+2026-08-09 10:55:29.040 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Releasing session in state CLOSING
+2026-08-09 10:55:29.046 20386-20510 SyncCaptureSessionImpl  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@cc0d5f5] Session call super.close()
+2026-08-09 10:55:29.068 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [] for camera: 0
+2026-08-09 10:55:29.090 20386-20510 CaptureSession          com.xingyao.card                     D  onSessionFinished()
+2026-08-09 10:55:29.103 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} closing camera
+2026-08-09 10:55:29.138 20386-20386 DynamicRangeResolver    com.xingyao.card                     D  Resolved dynamic range for use case androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5 to no compatible HDR dynamic ranges.
+                                                                                                    DynamicRange@deddca0{encoding=UNSPECIFIED, bitDepth=0}
+                                                                                                    ->
+                                                                                                    DynamicRange@47691a3{encoding=SDR, bitDepth=8}
+2026-08-09 10:55:29.162 20386-20386 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:29.169 20386-20386 CameraQuirks            com.xingyao.card                     D  camera2 CameraQuirks = 
+2026-08-09 10:55:29.236 20386-20386 DeferrableSurface       com.xingyao.card                     D  Surface created[total_surfaces=3, used_surfaces=2](androidx.camera.core.processing.SurfaceEdge$SettableSurface@17044a2}
+2026-08-09 10:55:29.260 20386-20386 DeferrableSurface       com.xingyao.card                     D  Surface created[total_surfaces=4, used_surfaces=2](androidx.camera.core.SurfaceRequest$2@8b208ee}
+2026-08-09 10:55:29.289 20386-20386 DeferrableSurface       com.xingyao.card                     D  New surface in use[total_surfaces=4, used_surfaces=3](androidx.camera.core.SurfaceRequest$2@8b208ee}
+2026-08-09 10:55:29.290 20386-20386 DeferrableSurface       com.xingyao.card                     D  use count+1, useCount=1 androidx.camera.core.SurfaceRequest$2@8b208ee
+2026-08-09 10:55:29.334 20386-20386 DeferrableSurface       com.xingyao.card                     D  Surface created[total_surfaces=5, used_surfaces=3](androidx.camera.core.impl.ImmediateSurface@a47a7ab}
+2026-08-09 10:55:29.372 20386-20386 MainActivity            com.xingyao.card                     D  Camera bound persistently to fullscreen TextureView
+2026-08-09 10:55:29.373 20386-20386 MainActivity            com.xingyao.card                     D  applyFacePreviewMirror: mirror=true w=522 h=628
+2026-08-09 10:55:29.379 20386-20386 Choreographer           com.xingyao.card                     I  Skipped 41 frames!  The application may be doing too much work on its main thread.
+2026-08-09 10:55:29.424 20386-20386 MainActivity            com.xingyao.card                     D  Providing Surface for camera preview: 261871356
+2026-08-09 10:55:29.426 20386-20432 OpenGLRenderer          com.xingyao.card                     I  Davey! duration=781ms; Flags=0, IntendedVsync=4747988716260, Vsync=4748720859082, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=4748725745912, AnimationStart=4748725764287, PerformTraversalsStart=4748726750996, DrawStart=4748727197829, SyncQueued=4748746323873, SyncStart=4748747148414, IssueDrawCommandsStart=4748750268373, SwapBuffers=4748766683375, FrameCompleted=4748771283250, DequeueBufferDuration=1182417, QueueBufferDuration=1205167, GpuCompleted=4745688740190, 
+2026-08-09 10:55:29.478 20386-20405 om.xingyao.car          com.xingyao.card                     W  Long monitor contention with owner CameraX-core_camera_0 (20510) at void android.hardware.camera2.impl.CameraDeviceImpl.close()(CameraDeviceImpl.java:1326) waiters=0 in void android.hardware.camera2.impl.CameraDeviceImpl$CameraDeviceCallbacks.onCaptureStarted(android.hardware.camera2.impl.CaptureResultExtras, long) for 345ms
+2026-08-09 10:55:29.537 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925 ACTIVE
+2026-08-09 10:55:29.551 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [] for camera: 0
+2026-08-09 10:55:29.571 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.ImageAnalysis-99f7dd5b-b598-4940-9454-3f8e5733a483138360394 INACTIVE
+2026-08-09 10:55:29.572 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [] for camera: 0
+2026-08-09 10:55:29.590 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use cases [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925, androidx.camera.core.ImageAnalysis-99f7dd5b-b598-4940-9454-3f8e5733a483138360394] now ATTACHED
+2026-08-09 10:55:29.591 20386-20510 Camera2CameraControlImp com.xingyao.card                     D  setActive: isActive = true
+2026-08-09 10:55:29.602 20386-20510 UseCaseAttachState      com.xingyao.card                     D  All use case: [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925, androidx.camera.core.ImageAnalysis-99f7dd5b-b598-4940-9454-3f8e5733a483138360394] for camera: 0
+2026-08-09 10:55:29.614 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925] for camera: 0
+2026-08-09 10:55:29.668 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Resetting Capture Session
+2026-08-09 10:55:29.678 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Skipping Capture Session state check due to current camera state: CLOSING and previous session status: false
+2026-08-09 10:55:29.689 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Releasing session in state CLOSING
+2026-08-09 10:55:29.695 20386-20553 HttpClientManager       com.xingyao.card                     D  GET https://card-test.quyohui.com/api/v1/device/config
+2026-08-09 10:55:29.704 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Transitioning camera internal state: CLOSING --> REOPENING
+2026-08-09 10:55:29.738 20386-20510 CameraStateRegistry     com.xingyao.card                     D  Recalculating open cameras:
+                                                                                                    Camera                                       State                 
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Camera@9e1ebe[id=1]                          UNKNOWN               
+                                                                                                    Camera@6f79d72[id=0]                         OPENING               
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Open count: 1 (Max allowed: 1)
+2026-08-09 10:55:29.739 20386-20510 CameraStateMachine      com.xingyao.card                     D  New public camera state CameraState{type=OPENING, error=null} from OPENING and null
+2026-08-09 10:55:29.739 20386-20510 CameraStateMachine      com.xingyao.card                     D  Publishing new public camera state CameraState{type=OPENING, error=null}
+2026-08-09 10:55:29.750 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925 ACTIVE
+2026-08-09 10:55:29.759 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925] for camera: 0
+2026-08-09 10:55:29.824 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Use case androidx.camera.core.ImageAnalysis-99f7dd5b-b598-4940-9454-3f8e5733a483138360394 INACTIVE
+2026-08-09 10:55:29.831 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925] for camera: 0
+2026-08-09 10:55:29.971 20386-20510 DeferrableSurface       com.xingyao.card                     D  use count-1,  useCount=0 closed=true androidx.camera.core.SurfaceRequest$2@2169fb8
+2026-08-09 10:55:29.973 20386-20510 DeferrableSurface       com.xingyao.card                     D  Surface no longer in use[total_surfaces=5, used_surfaces=2](androidx.camera.core.SurfaceRequest$2@2169fb8}
+2026-08-09 10:55:29.974 20386-20510 DeferrableSurface       com.xingyao.card                     D  Surface terminated[total_surfaces=4, used_surfaces=2](androidx.camera.core.SurfaceRequest$2@2169fb8}
+2026-08-09 10:55:30.011 20386-20510 DeferrableSurface       com.xingyao.card                     D  use count-1,  useCount=0 closed=true androidx.camera.core.impl.ImmediateSurface@4b265cd
+2026-08-09 10:55:30.012 20386-20510 DeferrableSurface       com.xingyao.card                     D  Surface no longer in use[total_surfaces=4, used_surfaces=1](androidx.camera.core.impl.ImmediateSurface@4b265cd}
+2026-08-09 10:55:30.015 20386-20510 DeferrableSurface       com.xingyao.card                     D  Surface terminated[total_surfaces=3, used_surfaces=1](androidx.camera.core.impl.ImmediateSurface@4b265cd}
+2026-08-09 10:55:30.016 20386-20386 MainActivity            com.xingyao.card                     D  Camera Surface released, code=0
+2026-08-09 10:55:30.027 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} CameraDevice.onClosed()
+2026-08-09 10:55:30.039 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Attempting to open the camera.
+2026-08-09 10:55:30.061 20386-20510 CameraStateRegistry     com.xingyao.card                     D  tryOpenCamera(Camera@6f79d72[id=0]) [Available Cameras: 0, Already Open: true (Previous state: OPENING)] --> SUCCESS
+2026-08-09 10:55:30.076 20386-20510 CameraStateRegistry     com.xingyao.card                     D  Recalculating open cameras:
+                                                                                                    Camera                                       State                 
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Camera@9e1ebe[id=1]                          UNKNOWN               
+                                                                                                    Camera@6f79d72[id=0]                         OPENING               
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Open count: 1 (Max allowed: 1)
+2026-08-09 10:55:30.089 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Opening camera.
+2026-08-09 10:55:30.095 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Transitioning camera internal state: REOPENING --> OPENING
+2026-08-09 10:55:30.108 20386-20510 CameraStateMachine      com.xingyao.card                     D  New public camera state CameraState{type=OPENING, error=null} from OPENING and null
+2026-08-09 10:55:30.127 20386-20510 UseCaseAttachState      com.xingyao.card                     D  All use case: [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925, androidx.camera.core.ImageAnalysis-99f7dd5b-b598-4940-9454-3f8e5733a483138360394] for camera: 0
+2026-08-09 10:55:30.185 20386-20553 HttpClientManager       com.xingyao.card                     D  HTTP 200 https://card-test.quyohui.com/api/v1/device/config BODY={"msg":"操作成功","code":200,"data":{"baudRate":57600,"cameraFacing":"back","cameraFrameHeight":480,"cameraFrameWidth":640,"cameraMirror":true,"cameraRotation":0,"captureTimeout":8000,"communicationMode":"MQTT","developerPassword":"666666","faceRecognitionTimeout":30000,"faceThreshold":0.80,"fingerEnabled":"0","fingerThreshold":0.80,"groupSize":5,"httpHost":"card-test.quyohui.com","httpPort":443,"mqttHeartbeatInterval":60000,"mqttHost":"119.146.88.108","mqttPort":48419,"mqttReconnectInitialInterval":1000,"mqttReconnectMaxInterval":60000,"mqttStatusReportInterval":300000,"needFaceLiveness":false,"pollingMode":"GROUP","searchIntervalTime":3000,"searchTimeout":15000,"serialPollEnabled":true,"serialPollInterval":5000,"serialPort":"/dev/ttyS5","serialResponseTimeout":700,"slotSortDirection":"HORIZONTAL","slotStatusPushInterval":300000,"superAdminPassword":"123456","totalSlots":10}}
+2026-08-09 10:55:30.357 20386-20510 SyncCaptureSessionImpl  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@cc0d5f5] onClosed()
+2026-08-09 10:55:30.380 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} CameraDevice.onOpened()
+2026-08-09 10:55:30.393 20386-20510 Camera2CameraImpl       com.xingyao.card                     D  {Camera@6f79d72[id=0]} Transitioning camera internal state: OPENING --> OPENED
+2026-08-09 10:55:30.419 20386-20510 CameraStateRegistry     com.xingyao.card                     D  Recalculating open cameras:
+                                                                                                    Camera                                       State                 
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Camera@9e1ebe[id=1]                          UNKNOWN               
+                                                                                                    Camera@6f79d72[id=0]                         OPEN                  
+                                                                                                    -------------------------------------------------------------------
+                                                                                                    Open count: 1 (Max allowed: 1)
+2026-08-09 10:55:30.421 20386-20510 CameraStateMachine      com.xingyao.card                     D  New public camera state CameraState{type=OPEN, error=null} from OPEN and null
+2026-08-09 10:55:30.421 20386-20510 CameraStateMachine      com.xingyao.card                     D  Publishing new public camera state CameraState{type=OPEN, error=null}
+2026-08-09 10:55:30.441 20386-20510 UseCaseAttachState      com.xingyao.card                     D  All use case: [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925, androidx.camera.core.ImageAnalysis-99f7dd5b-b598-4940-9454-3f8e5733a483138360394] for camera: 0
+2026-08-09 10:55:30.479 20386-20386 MqttSignUtil            com.xingyao.card                     D  sign input: status_1786244129526_5904726d92eeedb5_000001:statusReport:1786244130476:{"slots":[{"slotId":1,"status":"CHARGING","cardNo":"864865083805466","voltage":4.9,"current":0.4,"faultCode":0}]}
+2026-08-09 10:55:30.486 20386-20510 UseCaseAttachState      com.xingyao.card                     D  Active and attached use case: [androidx.camera.core.Preview-c1a0ac64-718d-440d-a483-d9051e2bf4d5196607925] for camera: 0
+2026-08-09 10:55:30.494 20386-20386 XMqttClient             com.xingyao.card                     D  Published to card/2A45688C/up: cmd=statusReport msgId=status_1786244129526_5904726d92eeedb5_000001 signed=true
+2026-08-09 10:55:30.529 20386-20510 SyncCaptureSessionBase  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@358964e] getSurface done with results: [Surface(name=android.graphics.SurfaceTexture@f9bd6fc)/@0xf076123, Surface(name=null)/@0x2c28d49]
+2026-08-09 10:55:30.535 20386-20510 CaptureSession          com.xingyao.card                     D  Opening capture session.
+2026-08-09 10:55:30.544 20386-20510 Camera2Cap...estBuilder com.xingyao.card                     D  template type = 1
+2026-08-09 10:55:30.557 20386-20510 SyncCaptureSessionImpl  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@358964e] start openCaptureSession
+2026-08-09 10:55:30.558 20386-20510 DeferrableSurface       com.xingyao.card                     D  use count+1, useCount=2 androidx.camera.core.SurfaceRequest$2@8b208ee
+2026-08-09 10:55:30.558 20386-20510 DeferrableSurface       com.xingyao.card                     D  New surface in use[total_surfaces=3, used_surfaces=2](androidx.camera.core.impl.ImmediateSurface@a47a7ab}
+2026-08-09 10:55:30.559 20386-20510 DeferrableSurface       com.xingyao.card                     D  use count+1, useCount=1 androidx.camera.core.impl.ImmediateSurface@a47a7ab
+2026-08-09 10:55:30.644 20386-20667 XMqttClient             com.xingyao.card                     D  Received on card/2A45688C/down/response: {"data":{"msg":"success","code":0},"msgId":"cf769aaa-a4eb-41d6-8038-36b57d16378b","cmd":"statusReportResp","timestamp":1786244131533}
+2026-08-09 10:55:30.646 20386-20667 XMqttClient             com.xingyao.card                     D  Posted to EventBus: MqttMessageEvent{cmd=statusReportResp, msgId=cf769aaa-a4eb-41d6-8038-36b57d16378b, topic=card/2A45688C/down/response}
+2026-08-09 10:55:30.748 20386-20670 DeviceSerialManager     com.xingyao.card                     I  First poll round complete (10 slots), snapshot pushed immediately
+2026-08-09 10:55:30.999 20386-20510 SyncCaptureSessionImpl  com.xingyao.card                     D  [androidx.camera.camera2.internal.SynchronizedCaptureSessionImpl@358964e] Session onConfigured()
+2026-08-09 10:55:31.013 20386-20510 CaptureSession          com.xingyao.card                     D  Attempting to send capture request onConfigured
+2026-08-09 10:55:31.013 20386-20510 CaptureSession          com.xingyao.card                     D  Issuing request for session.
+2026-08-09 10:55:31.014 20386-20510 Camera2Cap...estBuilder com.xingyao.card                     D  createCaptureRequest
+2026-08-09 10:55:31.048 20386-20510 CaptureSession          com.xingyao.card                     D  CameraCaptureSession.onConfigured() mState=OPENED
+2026-08-09 10:55:31.059 20386-20510 CaptureSession          com.xingyao.card                     D  CameraCaptureSession.onReady() OPENED
+2026-08-09 10:55:31.845 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 10
+2026-08-09 10:55:31.919 20386-20553 JsBridgeV2              com.xingyao.card                     I  HttpClient post REQ → /api/v1/employee/sync
+2026-08-09 10:55:31.958 20386-20553 HttpClientManager       com.xingyao.card                     D  POST https://card-test.quyohui.com/api/v1/employee/sync
+2026-08-09 10:55:32.365 20386-20553 HttpClientManager       com.xingyao.card                     D  HTTP 200 https://card-test.quyohui.com/api/v1/employee/sync BODY={"msg":"操作成功","code":200,"data":{"code":0,"deletedEmployeeIds":[],"employees":[],"hasMore":false,"msg":"success","page":0,"pageSize":50,"syncVersion":1786244133143,"total":0}}
+2026-08-09 10:55:32.366 20386-20553 JsBridgeV2              com.xingyao.card                     I  HttpClient post RES ← /api/v1/employee/sync body={"msg":"操作成功","code":200,"data":{"code":0,"deletedEmployeeIds":[],"employees":[],"hasMore":false,"msg":"success","page":0,"pageSize":50,"syncVersion":1786244133143,"total":0}}
+2026-08-09 10:55:32.665 20386-20553 JsBridgeV2              com.xingyao.card                     I  HttpClient post REQ → /api/v1/employee/face/sync
+2026-08-09 10:55:32.699 20386-20553 HttpClientManager       com.xingyao.card                     D  POST https://card-test.quyohui.com/api/v1/employee/face/sync
+2026-08-09 10:55:33.060 20386-20553 HttpClientManager       com.xingyao.card                     D  HTTP 200 https://card-test.quyohui.com/api/v1/employee/face/sync BODY={"msg":"操作成功","code":200,"data":{"code":0,"faceFeatures":[],"hasMore":false,"msg":"success","page":0,"pageSize":10,"syncVersion":1786244133845,"total":0}}
+2026-08-09 10:55:33.060 20386-20553 JsBridgeV2              com.xingyao.card                     I  HttpClient post RES ← /api/v1/employee/face/sync body={"msg":"操作成功","code":200,"data":{"code":0,"faceFeatures":[],"hasMore":false,"msg":"success","page":0,"pageSize":10,"syncVersion":1786244133845,"total":0}}
+2026-08-09 10:55:33.355 20386-20553 JsBridgeV2              com.xingyao.card                     I  HttpClient post REQ → /api/v1/employee/finger/sync
+2026-08-09 10:55:33.404 20386-20553 HttpClientManager       com.xingyao.card                     D  POST https://card-test.quyohui.com/api/v1/employee/finger/sync
+2026-08-09 10:55:33.765 20386-20553 HttpClientManager       com.xingyao.card                     D  HTTP 200 https://card-test.quyohui.com/api/v1/employee/finger/sync BODY={"msg":"操作成功","code":200,"data":{"code":0,"fingerFeatures":[],"hasMore":false,"msg":"success","page":0,"pageSize":20,"syncVersion":1786244134552,"total":0}}
+2026-08-09 10:55:33.766 20386-20553 JsBridgeV2              com.xingyao.card                     I  HttpClient post RES ← /api/v1/employee/finger/sync body={"msg":"操作成功","code":200,"data":{"code":0,"fingerFeatures":[],"hasMore":false,"msg":"success","page":0,"pageSize":20,"syncVersion":1786244134552,"total":0}}
+2026-08-09 10:55:34.057 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [main] native.ready received (may be late or duplicate)
+2026-08-09 10:55:34.144 20386-20498 LocalHttpServer         com.xingyao.card                     D  Request: GET /favicon.ico
+2026-08-09 10:55:34.488 20453-20472 chromium                com.xingyao.card                     I  [INFO:document_style_environment_variables.cc(78)] E2E_Used SafeAreaInsetBottom
+2026-08-09 10:55:34.625 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 10
+2026-08-09 10:55:36.007 20386-20432 OpenGLRenderer          com.xingyao.card                     I  Davey! duration=1387ms; Flags=0, IntendedVsync=4753964071582, Vsync=4753964071582, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=4753974089189, AnimationStart=4753974092398, PerformTraversalsStart=4753975392648, DrawStart=4753975549273, SyncQueued=4753991079649, SyncStart=4753991614566, IssueDrawCommandsStart=4753992816233, SwapBuffers=4755351145369, FrameCompleted=4755352570745, DequeueBufferDuration=437208, QueueBufferDuration=523250, GpuCompleted=4751707684670, 
+2026-08-09 10:55:36.012 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 10
+2026-08-09 10:55:36.017 20386-20386 Choreographer           com.xingyao.card                     I  Skipped 75 frames!  The application may be doing too much work on its main thread.
+2026-08-09 10:55:36.085 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 10
+2026-08-09 10:55:36.154 20386-20386 WebView                 com.xingyao.card                     I  [LOG] [http://127.0.0.1:8088/assets/index-9ea62dc3.js:11] [initSlots] totalSlots=%d, initialized %d slots, rehydrated %d 10 10 10
+2
